@@ -117,7 +117,8 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
         httponly=True,
         max_age=86400 * JWT_EXPIRATION_DAYS,
         samesite="lax",
-        path="/"
+        path="/",
+        secure=False  # Set to True if using HTTPS
     )
     
     return response
@@ -143,8 +144,12 @@ async def logout(request: Request) -> JSONResponse:
     # Create response
     response = JSONResponse({"success": True, "message": "Logged out"})
     
-    # Clear cookie
-    response.delete_cookie("session_token", path="/")
+    # Clear cookie with same settings as when it was set
+    response.delete_cookie(
+        key="session_token",
+        path="/",
+        samesite="lax"
+    )
 
     return response
 

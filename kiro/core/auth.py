@@ -11,6 +11,7 @@ import hashlib
 import json
 import secrets
 import sqlite3
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
@@ -298,6 +299,7 @@ class AccountManager:
         self._db_path = str(Path(db_path).expanduser())
         self._lock = asyncio.Lock()
         self._cursor_index: int = 0
+        self._token_cache: Dict[int, Tuple[str, float]] = {}  # account_id -> (token, expiry_timestamp)
         self._init_db()
 
     # ------------------------------------------------------------------
@@ -556,6 +558,33 @@ class AccountManager:
     # Token management
     # ------------------------------------------------------------------
 
+    def _get_cached_token(self, account_id: int) -> Optional[str]:
+        """Get cached token if still valid.
+        
+        Args:
+            account_id: Account ID.
+            
+        Returns:
+            Cached token if valid, None otherwise.
+        """
+        if account_id in self._token_cache:
+            token, expiry = self._token_cache[account_id]
+            # Check if token expires in more than 60 seconds
+            if time.time() < expiry - 60:
+                return token
+        return None
+    
+    def _cache_token(self, account_id: int, token: str, expires_in: int) -> None:
+        """Cache a token with its expiry time.
+        
+        Args:
+            account_id: Account ID.
+            token: Access token.
+            expires_in: Token lifetime in seconds.
+        """
+        expiry = time.time() + expires_in
+        self._token_cache[account_id] = (token, expiry)
+
     async def _ensure_valid_token_kiro(self, account: Account) -> Optional[str]:
         """Ensure the kiro account has a valid access token, refreshing if needed.
 
@@ -565,6 +594,11 @@ class AccountManager:
         Returns:
             Valid access token, or None if unavailable.
         """
+        # Check cache first (fast path, no lock needed)
+        cached_token = self._get_cached_token(account.id)
+        if cached_token:
+            return cached_token
+        
         config = account.config
         access_token = config.get("accessToken") or config.get("access_token")
         refresh_token = config.get("refreshToken") or config.get("refresh_token")
@@ -583,6 +617,8 @@ class AccountManager:
                 config["refreshedAt"] = result["refreshedAt"]
                 self._persist_config(account.id, config)
                 account.config = config
+                # Cache the new token
+                self._cache_token(account.id, result["accessToken"], result["expiresIn"])
                 logger.info(f"Account {account.id}: token refreshed successfully")
                 return config["accessToken"]
             return None
@@ -595,9 +631,16 @@ class AccountManager:
                 config["refreshedAt"] = result["refreshedAt"]
                 self._persist_config(account.id, config)
                 account.config = config
+                # Cache the new token
+                self._cache_token(account.id, result["accessToken"], result["expiresIn"])
                 return config["accessToken"]
             return None
 
+        # Cache existing valid token
+        if access_token:
+            expires_in = config.get("expiresIn", 3600)
+            self._cache_token(account.id, access_token, expires_in)
+        
         return access_token
 
     async def _get_token_for_account(self, account: Account) -> Optional[str]:

@@ -24,6 +24,9 @@ async function checkLoginStatus() {
         const data = await response.json();
         console.log('Logged in as:', data.username);
         
+        // Add small delay to ensure cookies are fully propagated (especially in Docker)
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         // Load dashboard data
         loadDashboard();
     } catch (error) {
@@ -93,8 +96,8 @@ async function logout() {
     }
 }
 
-// API helper
-async function apiRequest(url, options = {}) {
+// API helper with retry logic for Docker environments
+async function apiRequest(url, options = {}, retries = 1) {
     try {
         const headers = {
             'Content-Type': 'application/json',
@@ -109,6 +112,11 @@ async function apiRequest(url, options = {}) {
         
         if (!response.ok) {
             if (response.status === 401) {
+                // Retry once for 401 errors (cookie might not be ready)
+                if (retries > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    return apiRequest(url, options, retries - 1);
+                }
                 window.location.href = '/login';
                 throw new Error('Session expired. Please login again.');
             }
@@ -122,6 +130,11 @@ async function apiRequest(url, options = {}) {
         
         return await response.json();
     } catch (error) {
+        // Retry on network errors (except for explicit redirects)
+        if (retries > 0 && !error.message.includes('Session expired')) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            return apiRequest(url, options, retries - 1);
+        }
         throw error;
     }
 }
