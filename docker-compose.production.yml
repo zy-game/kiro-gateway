@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  kiro-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kiro-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+      - PROXY_API_KEY=${PROXY_API_KEY}
+      - REFRESH_TOKEN=${REFRESH_TOKEN}
+      - PROFILE_ARN=${PROFILE_ARN:-}
+      - KIRO_CREDS_FILE=${KIRO_CREDS_FILE:-}
+      - KIRO_CLI_DB_FILE=${KIRO_CLI_DB_FILE:-}
+      - KIRO_REGION=${KIRO_REGION:-us-east-1}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEBUG_MODE=${DEBUG_MODE:-off}
+      - VPN_PROXY_URL=${VPN_PROXY_URL:-}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+    
+    env_file:
+      - .env
+    
+    volumes:
+      # 使用命名卷（Docker 自动管理权限）
+      - kiro-data:/app/data
+      - kiro-logs:/app/debug_logs
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+# 定义命名卷
+volumes:
+  kiro-data:
+    driver: local
+  kiro-logs:
+    driver: local
+
+networks:
+  default:
+    name: kiro-gateway-network
