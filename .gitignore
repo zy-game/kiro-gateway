@@ -21,6 +21,10 @@ build/
 debug_logs*/
 debug*.json
 
+# Data directory (SQLite databases)
+data/*.db
+data/*.db-*
+
 # Project-specific
 _notes/
 requests/

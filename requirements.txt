@@ -5,6 +5,7 @@ httpx
 loguru
 python-dotenv
 tiktoken
+PyJWT
 
 # Testing dependencies
 pytest

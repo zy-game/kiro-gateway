@@ -51,6 +51,9 @@ services:
       # Uncomment and adjust path as needed:
       # - ~/.local/share/kiro-cli:/home/kiro/.local/share/kiro-cli:ro
       
+      # Mount data directory for accounts database (persistent storage)
+      - ./data:/app/data
+      
       # Mount debug logs directory (optional, for debugging)
       - ./debug_logs:/app/debug_logs
     

@@ -22,8 +22,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY --chown=kiro:kiro . .
 
-# Create directory for debug logs with proper permissions
-RUN mkdir -p debug_logs && chown -R kiro:kiro debug_logs
+# Create directories with proper permissions
+RUN mkdir -p debug_logs data && chown -R kiro:kiro debug_logs data
 
 # Switch to non-root user
 USER kiro

@@ -47,20 +47,17 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from loguru import logger
 
-from kiro.config import (
+from kiro.core.config import (
     APP_TITLE,
     APP_DESCRIPTION,
     APP_VERSION,
-    REFRESH_TOKEN,
-    PROFILE_ARN,
-    REGION,
-    KIRO_CREDS_FILE,
-    KIRO_CLI_DB_FILE,
     PROXY_API_KEY,
     LOG_LEVEL,
     SERVER_HOST,
@@ -73,15 +70,17 @@ from kiro.config import (
     HIDDEN_FROM_LIST,
     FALLBACK_MODELS,
     VPN_PROXY_URL,
+    ACCOUNTS_DB_FILE,
     _warn_timeout_configuration,
 )
-from kiro.auth import KiroAuthManager
-from kiro.cache import ModelInfoCache
-from kiro.model_resolver import ModelResolver
-from kiro.routes_openai import router as openai_router
-from kiro.routes_anthropic import router as anthropic_router
-from kiro.exceptions import validation_exception_handler
-from kiro.debug_middleware import DebugLoggerMiddleware
+from kiro.core.auth import AccountManager
+from kiro.core.cache import ModelInfoCache
+from kiro.core.model_resolver import ModelResolver
+from kiro.routes.api import router as anthropic_router
+from kiro.routes.admin import router as admin_router
+from kiro.routes.auth import router as auth_router
+from kiro.middleware.exceptions import validation_exception_handler
+from kiro.middleware.debug import DebugLoggerMiddleware
 
 
 # --- Loguru Configuration ---
@@ -203,81 +202,29 @@ if VPN_PROXY_URL:
 def validate_configuration() -> None:
     """
     Validates that required configuration is present.
-    
+
     Checks:
-    - Either REFRESH_TOKEN, KIRO_CREDS_FILE, or KIRO_CLI_DB_FILE is configured
-    - Supports both .env file (local) and environment variables (Docker)
-    
-    Raises:
-        SystemExit: If critical configuration is missing
+    - PROXY_API_KEY is set
+    - ACCOUNTS_DB_FILE path is accessible (directory exists)
     """
     errors = []
-    
-    # Check if .env file exists (optional - can use environment variables)
-    env_file = Path(".env")
-    
-    # Check for credentials (from .env or environment variables)
-    has_refresh_token = bool(REFRESH_TOKEN)
-    has_creds_file = bool(KIRO_CREDS_FILE)
-    has_cli_db = bool(KIRO_CLI_DB_FILE)
-    
-    # Check if creds file actually exists
-    if KIRO_CREDS_FILE:
-        creds_path = Path(KIRO_CREDS_FILE).expanduser()
-        if not creds_path.exists():
-            has_creds_file = False
-            logger.warning(f"KIRO_CREDS_FILE not found: {KIRO_CREDS_FILE}")
-    
-    # Check if CLI database file actually exists
-    if KIRO_CLI_DB_FILE:
-        cli_db_path = Path(KIRO_CLI_DB_FILE).expanduser()
-        if not cli_db_path.exists():
-            has_cli_db = False
-            logger.warning(f"KIRO_CLI_DB_FILE not found: {KIRO_CLI_DB_FILE}")
-    
-    # If no credentials found, show helpful error
-    if not has_refresh_token and not has_creds_file and not has_cli_db:
-        if not env_file.exists():
-            # No .env file and no environment variables
+
+    if not PROXY_API_KEY or PROXY_API_KEY == "my-super-secret-password-123":
+        logger.warning(
+            "PROXY_API_KEY is using the default value. "
+            "Set a strong secret in your .env file: PROXY_API_KEY=\"your-secret\""
+        )
+
+    db_dir = Path(ACCOUNTS_DB_FILE).expanduser().parent
+    if not db_dir.exists():
+        try:
+            db_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created database directory: {db_dir}")
+        except Exception as e:
             errors.append(
-                "No Kiro credentials configured!\n"
-                "\n"
-                "To get started:\n"
-                "1. Create .env file:\n"
-                "   cp .env.example .env\n"
-                "\n"
-                "2. Edit .env and configure your credentials:\n"
-                "   2.1. Set you super-secret password as PROXY_API_KEY\n"
-                "   2.2. Set your Kiro credentials:\n"
-                "      - Option 1: KIRO_CREDS_FILE to your Kiro credentials JSON file\n"
-                "      - Option 2: REFRESH_TOKEN from Kiro IDE traffic\n"
-                "      - Option 3: KIRO_CLI_DB_FILE to kiro-cli SQLite database\n"
-                "\n"
-                "Or use environment variables (for Docker):\n"
-                "   docker run -e PROXY_API_KEY=\"...\" -e REFRESH_TOKEN=\"...\" ...\n"
-                "\n"
-                "See README.md for detailed instructions."
-            )
-        else:
-            # .env exists but no credentials configured
-            errors.append(
-                "No Kiro credentials configured!\n"
-                "\n"
-                "   Configure one of the following in your .env file:\n"
-                "\n"
-                "Set you super-secret password as PROXY_API_KEY\n"
-                "   PROXY_API_KEY=\"my-super-secret-password-123\"\n"
-                "\n"
-                "   Option 1 (Recommended): JSON credentials file\n"
-                "      KIRO_CREDS_FILE=\"path/to/your/kiro-credentials.json\"\n"
-                "\n"
-                "   Option 2: Refresh token\n"
-                "      REFRESH_TOKEN=\"your_refresh_token_here\"\n"
-                "\n"
-                "   Option 3: kiro-cli SQLite database (AWS SSO)\n"
-                "      KIRO_CLI_DB_FILE=\"~/.local/share/kiro-cli/data.sqlite3\"\n"
-                "\n"
-                "   See README.md for how to obtain credentials."
+                f"Failed to create ACCOUNTS_DB_FILE directory: {db_dir}\n"
+                f"Error: {e}\n"
+                "Please create the directory manually or set ACCOUNTS_DB_FILE to a valid path."
             )
     
     # Print errors and exit if any
@@ -293,7 +240,7 @@ def validate_configuration() -> None:
         logger.error("")
         sys.exit(1)
     
-    # Note: Credential loading details are logged by KiroAuthManager
+    # Note: Account loading details are logged by AccountManager
 
 
 # --- Lifespan Manager ---
@@ -335,35 +282,51 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Shared HTTP client created with connection pooling")
     
-    # Create AuthManager
-    # Priority: SQLite DB > JSON file > environment variables
-    app.state.auth_manager = KiroAuthManager(
-        refresh_token=REFRESH_TOKEN,
-        profile_arn=PROFILE_ARN,
-        region=REGION,
-        creds_file=KIRO_CREDS_FILE if KIRO_CREDS_FILE else None,
-        sqlite_db=KIRO_CLI_DB_FILE if KIRO_CLI_DB_FILE else None,
-    )
-    
+    # Create AccountManager (loads/creates accounts.db)
+    app.state.auth_manager = AccountManager(db_path=ACCOUNTS_DB_FILE)
+
     # Create model cache
     app.state.model_cache = ModelInfoCache()
-    
+
+    # Create default admin user if none exist
+    users = app.state.auth_manager.list_admin_users()
+    if not users:
+        default_username = "admin"
+        default_password = "admin123"
+        app.state.auth_manager.create_admin_user(default_username, default_password)
+        logger.warning("=" * 60)
+        logger.warning("  DEFAULT ADMIN USER CREATED")
+        logger.warning("=" * 60)
+        logger.warning(f"  Username: {default_username}")
+        logger.warning(f"  Password: {default_password}")
+        logger.warning("  ")
+        logger.warning("  ⚠️  CHANGE THIS PASSWORD IMMEDIATELY!")
+        logger.warning("  Login at http://localhost:8000/admin")
+        logger.warning("=" * 60)
+
     # BLOCKING: Load models from Kiro API at startup
     # This ensures the cache is populated BEFORE accepting any requests.
     # No race conditions - requests only start after yield.
     logger.info("Loading models from Kiro API...")
     try:
-        token = await app.state.auth_manager.get_access_token()
-        from kiro.utils import get_kiro_headers
-        from kiro.auth import AuthType
-        headers = get_kiro_headers(app.state.auth_manager, token)
+        # Check if any accounts are configured
+        accounts = app.state.auth_manager.list_accounts()
+        if not accounts:
+            logger.warning("No accounts configured. Skipping model fetch from Kiro API.")
+            logger.warning("Add accounts via POST /admin/accounts to enable API access.")
+            raise Exception("No accounts configured")
         
-        # Build params - profileArn is only needed for Kiro Desktop auth
+        token, account = await app.state.auth_manager.get_access_token()
+        from kiro.utils_pkg.helpers import get_kiro_headers
+        headers = get_kiro_headers(token)
+
+        region = account.config.get("region", "us-east-1")
+        profile_arn = account.config.get("profileArn") or account.config.get("profile_arn")
         params = {"origin": "AI_EDITOR"}
-        if app.state.auth_manager.auth_type == AuthType.KIRO_DESKTOP and app.state.auth_manager.profile_arn:
-            params["profileArn"] = app.state.auth_manager.profile_arn
-        
-        list_models_url = f"{app.state.auth_manager.q_host}/ListAvailableModels"
+        if profile_arn:
+            params["profileArn"] = profile_arn
+
+        list_models_url = f"https://q.{region}.amazonaws.com/ListAvailableModels"
         logger.debug(f"Fetching models from: {list_models_url}")
         
         async with httpx.AsyncClient(timeout=30) as client:
@@ -459,11 +422,44 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 
 # --- Route Registration ---
-# OpenAI-compatible API: /v1/models, /v1/chat/completions
-app.include_router(openai_router)
-
 # Anthropic-compatible API: /v1/messages
 app.include_router(anthropic_router)
+
+# Admin API: /admin/accounts
+app.include_router(admin_router)
+
+# Auth API: /auth/login, /auth/logout
+app.include_router(auth_router)
+
+# Static files for web UI
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Web UI route
+@app.get("/admin")
+async def admin_ui(request: Request):
+    """Serve the admin web UI (requires login)."""
+    # Check if user is logged in
+    session_token = request.cookies.get("session_token")
+    
+    if not session_token:
+        # Not logged in, redirect to login page
+        return FileResponse("static/login.html")
+    
+    # Verify JWT token
+    from kiro.routes.auth import verify_jwt_token
+    username = verify_jwt_token(session_token)
+    if not username:
+        # Token invalid or expired, redirect to login page
+        return FileResponse("static/login.html")
+    
+    # Logged in, serve admin page
+    return FileResponse("static/index.html")
+
+
+@app.get("/login")
+async def login_page():
+    """Serve the login page."""
+    return FileResponse("static/login.html")
 
 
 # --- Uvicorn log config ---
@@ -605,19 +601,27 @@ def print_startup_banner(host: str, port: int) -> None:
     display_host = "localhost" if host == "0.0.0.0" else host
     url = f"http://{display_host}:{port}"
     
-    print()
-    print(f"  {WHITE}{BOLD}👻 {APP_TITLE} v{APP_VERSION}{RESET}")
-    print()
+    # Use safe characters for Windows console
+    try:
+        print()
+        print(f"  {WHITE}{BOLD}🚀 {APP_TITLE} v{APP_VERSION}{RESET}")
+        print()
+    except UnicodeEncodeError:
+        # Fallback for Windows console
+        print()
+        print(f"  {WHITE}{BOLD}{APP_TITLE} v{APP_VERSION}{RESET}")
+        print()
+    
     print(f"  {WHITE}Server running at:{RESET}")
-    print(f"  {GREEN}{BOLD}➜  {url}{RESET}")
+    print(f"  {GREEN}{BOLD}->  {url}{RESET}")
     print()
     print(f"  {DIM}API Docs:      {url}/docs{RESET}")
     print(f"  {DIM}Health Check:  {url}/health{RESET}")
     print()
-    print(f"  {DIM}{'─' * 48}{RESET}")
-    print(f"  {WHITE}💬 Found a bug? Need help? Have questions?{RESET}")
-    print(f"  {YELLOW}➜  https://github.com/jwadow/kiro-gateway/issues{RESET}")
-    print(f"  {DIM}{'─' * 48}{RESET}")
+    print(f"  {DIM}{'-' * 48}{RESET}")
+    print(f"  {WHITE}Found a bug? Need help? Have questions?{RESET}")
+    print(f"  {YELLOW}->  https://github.com/jwadow/kiro-gateway/issues{RESET}")
+    print(f"  {DIM}{'-' * 48}{RESET}")
     print()
 
 
