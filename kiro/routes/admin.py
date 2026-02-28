@@ -246,26 +246,30 @@ class ApiKeyCreateRequest(BaseModel):
 
 
 @router.get("/api-keys", dependencies=[Depends(verify_session)])
-async def list_api_keys(request: Request) -> JSONResponse:
+async def list_api_keys(request: Request, show_full: bool = False) -> JSONResponse:
     """List all API keys.
 
+    Args:
+        show_full: If True, return full keys. If False (default), mask keys for security.
+
     Returns:
-        JSON array of API key objects (key field is masked except last 8 chars).
+        JSON array of API key objects (key field is masked by default).
     """
     manager = request.app.state.auth_manager
     keys = manager.list_api_keys()
     
-    # Mask keys for security (show only last 8 chars)
-    masked_keys = []
+    # Format keys based on show_full parameter
+    formatted_keys = []
     for key in keys:
-        masked_keys.append({
+        formatted_keys.append({
             "id": key.id,
-            "key": f"...{key.key[-8:]}" if len(key.key) > 8 else "***",
+            "key": key.key if show_full else (f"...{key.key[-8:]}" if len(key.key) > 8 else "***"),
+            "full_key": key.key,  # Always include full key for copy functionality
             "name": key.name,
             "created_at": key.created_at,
         })
     
-    return JSONResponse(masked_keys)
+    return JSONResponse(formatted_keys)
 
 
 @router.post("/api-keys", dependencies=[Depends(verify_session)], status_code=201)

@@ -162,11 +162,7 @@ async def get_current_user(request: Request) -> JSONResponse:
     session_token = request.cookies.get("session_token")
     
     if not session_token:
-        response = JSONResponse(
-            {"detail": "Not logged in"},
-            status_code=401
-        )
-        return response
+        raise HTTPException(status_code=401, detail="Not logged in")
     
     # Verify JWT token
     username = verify_jwt_token(session_token)

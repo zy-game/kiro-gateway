@@ -347,6 +347,7 @@ async function loadTokens() {
                 <div class="data-item-header">
                     <div class="data-item-title">${token.name}</div>
                     <div class="data-item-actions">
+                        <button class="btn-sm btn-primary" onclick='copyToken(\`${token.full_key}\`)'>复制</button>
                         <button class="btn-sm btn-danger" onclick="deleteToken(${token.id})">删除</button>
                     </div>
                 </div>
@@ -410,6 +411,43 @@ async function deleteToken(id) {
     } catch (error) {
         showNotification('删除失败: ' + error.message, 'error');
     }
+}
+
+// Copy token to clipboard
+function copyToken(token) {
+    // Use Clipboard API if available
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(token)
+            .then(() => {
+                showNotification('令牌已复制到剪贴板');
+            })
+            .catch(err => {
+                console.error('Failed to copy:', err);
+                fallbackCopyToken(token);
+            });
+    } else {
+        fallbackCopyToken(token);
+    }
+}
+
+// Fallback copy method for older browsers
+function fallbackCopyToken(token) {
+    const textarea = document.createElement('textarea');
+    textarea.value = token;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    
+    try {
+        document.execCommand('copy');
+        showNotification('令牌已复制到剪贴板');
+    } catch (err) {
+        console.error('Failed to copy:', err);
+        showNotification('复制失败，请手动复制', 'error');
+    }
+    
+    document.body.removeChild(textarea);
 }
 
 // ==================== Users ====================
