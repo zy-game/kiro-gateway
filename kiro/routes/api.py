@@ -26,6 +26,7 @@ Reference: https://docs.anthropic.com/en/api/messages
 """
 
 import json
+import time
 from typing import Optional
 
 import httpx
@@ -164,6 +165,9 @@ async def messages(
         HTTPException: On validation or API errors
     """
     logger.info(f"Request to /v1/messages (model={request_data.model}, stream={request_data.stream})")
+    
+    # Record start time for duration tracking
+    start_time = time.time()
     
     if anthropic_version:
         logger.debug(f"Anthropic-Version header: {anthropic_version}")
@@ -438,6 +442,7 @@ async def messages(
                     
                     # Log request to database
                     try:
+                        duration_ms = int((time.time() - start_time) * 1000)
                         auth_manager.log_request(
                             api_key_id=api_key_id,
                             account_id=account.id if account else None,
@@ -445,7 +450,8 @@ async def messages(
                             input_tokens=final_usage.get("input_tokens", 0),
                             output_tokens=final_usage.get("output_tokens", 0),
                             status="error" if streaming_error else "success",
-                            channel="anthropic"
+                            channel="anthropic",
+                            duration_ms=duration_ms
                         )
                     except Exception as log_error:
                         logger.warning(f"Failed to log streaming request: {log_error}")
@@ -481,6 +487,7 @@ async def messages(
             
             # Log request to database
             try:
+                duration_ms = int((time.time() - start_time) * 1000)
                 usage = anthropic_response.get("usage", {})
                 auth_manager.log_request(
                     api_key_id=api_key_id,
@@ -489,7 +496,8 @@ async def messages(
                     input_tokens=usage.get("input_tokens", 0),
                     output_tokens=usage.get("output_tokens", 0),
                     status="success",
-                    channel="anthropic"
+                    channel="anthropic",
+                    duration_ms=duration_ms
                 )
             except Exception as log_error:
                 logger.warning(f"Failed to log request: {log_error}")

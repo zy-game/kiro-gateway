@@ -35,6 +35,7 @@ them to app_logs.txt file for debugging convenience.
 import io
 import json
 import shutil
+import time
 from pathlib import Path
 from typing import Optional
 from loguru import logger
@@ -74,6 +75,9 @@ class DebugLogger:
         # Buffer for application logs (loguru)
         self._app_logs_buffer: io.StringIO = io.StringIO()
         self._loguru_sink_id: Optional[int] = None
+        
+        # Request timing
+        self._request_start_time: Optional[float] = None
     
     def _is_enabled(self) -> bool:
         """Checks if logging is enabled."""
@@ -90,6 +94,7 @@ class DebugLogger:
         self._raw_chunks_buffer.clear()
         self._modified_chunks_buffer.clear()
         self._clear_app_logs_buffer()
+        self._request_start_time = None
     
     def _clear_app_logs_buffer(self):
         """Clears the application logs buffer and removes sink."""
@@ -132,13 +137,16 @@ class DebugLogger:
         
         In "all" mode: clears the logs folder.
         In "errors" mode: clears buffers.
-        In both modes: sets up application log capture.
+        In both modes: sets up application log capture and records start time.
         """
         if not self._is_enabled():
             return
         
         # Clear buffers in any case
         self._clear_buffers()
+        
+        # Record request start time
+        self._request_start_time = time.perf_counter()
         
         # Set up application log capture
         self._setup_app_logs_capture()
@@ -217,6 +225,46 @@ class DebugLogger:
             # "errors" mode - buffer
             self._modified_chunks_buffer.extend(chunk)
     
+    def _calculate_elapsed_time(self) -> Optional[float]:
+        """
+        Calculates elapsed time since request start.
+        
+        Returns:
+            Elapsed time in seconds, or None if start time not recorded
+        """
+        if self._request_start_time is None:
+            return None
+        return time.perf_counter() - self._request_start_time
+    
+    def log_timing_info(self):
+        """
+        Saves request timing information to file.
+        
+        Works in both modes (errors and all).
+        """
+        if not self._is_enabled():
+            return
+        
+        elapsed_time = self._calculate_elapsed_time()
+        if elapsed_time is None:
+            return
+        
+        try:
+            # Ensure directory exists
+            self.debug_dir.mkdir(parents=True, exist_ok=True)
+            
+            timing_info = {
+                "total_elapsed_time_seconds": round(elapsed_time, 3),
+                "total_elapsed_time_ms": round(elapsed_time * 1000, 1)
+            }
+            timing_file = self.debug_dir / "timing_info.json"
+            with open(timing_file, "w", encoding="utf-8") as f:
+                json.dump(timing_info, f, indent=2, ensure_ascii=False)
+            
+            logger.debug(f"[DebugLogger] Timing info saved (elapsed={elapsed_time:.3f}s)")
+        except Exception as e:
+            logger.error(f"[DebugLogger] Error writing timing_info: {e}")
+    
     def log_error_info(self, status_code: int, error_message: str = ""):
         """
         Writes error information to file.
@@ -262,9 +310,10 @@ class DebugLogger:
         if not self._is_enabled():
             return
         
-        # In "all" mode data is already written, add error_info and app logs
+        # In "all" mode data is already written, add error_info, timing and app logs
         if self._is_immediate_write():
             self.log_error_info(status_code, error_message)
+            self.log_timing_info()
             self._write_app_logs_to_file()
             self._clear_app_logs_buffer()
             return
@@ -304,6 +353,9 @@ class DebugLogger:
             # Save error information
             self.log_error_info(status_code, error_message)
             
+            # Save timing information
+            self.log_timing_info()
+            
             # Save application logs
             self._write_app_logs_to_file()
             
@@ -320,12 +372,13 @@ class DebugLogger:
         Clears buffers without writing to files.
         
         Called when request completed successfully in "errors" mode.
-        Also called in "all" mode to save logs of successful request.
+        Also called in "all" mode to save logs and timing of successful request.
         """
         if DEBUG_MODE == "errors":
             self._clear_buffers()
         elif DEBUG_MODE == "all":
-            # In "all" mode save logs even for successful requests
+            # In "all" mode save logs and timing even for successful requests
+            self.log_timing_info()
             self._write_app_logs_to_file()
             self._clear_app_logs_buffer()
     

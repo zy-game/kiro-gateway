@@ -6,6 +6,14 @@ let searchModel = '';
 let searchStatus = '';
 let totalLogs = 0;
 
+// Format duration in milliseconds to human-readable string
+function formatDuration(ms) {
+    if (!ms && ms !== 0) return 'N/A';
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
+    return `${(ms / 60000).toFixed(2)}m`;
+}
+
 async function loadLogs(page = 1) {
     currentPage = page;
     const container = document.getElementById('logsList');
@@ -44,6 +52,7 @@ async function loadLogs(page = 1) {
                         <th>令牌</th>
                         <th>输入</th>
                         <th>输出</th>
+                        <th>耗时</th>
                         <th>状态</th>
                     </tr>
                 </thead>
@@ -66,6 +75,7 @@ async function loadLogs(page = 1) {
                                 <td>${log.api_key_name}</td>
                                 <td>${(log.input_tokens || 0).toLocaleString()}</td>
                                 <td>${(log.output_tokens || 0).toLocaleString()}</td>
+                                <td>${formatDuration(log.duration_ms)}</td>
                                 <td><span class="status-badge" style="background-color: ${statusColor};">${log.status}</span></td>
                             </tr>
                         `;

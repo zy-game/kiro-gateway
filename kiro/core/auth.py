@@ -65,6 +65,8 @@ class ApiKey:
     key: str
     name: str
     created_at: str
+    duration_ms: Optional[int] = None
+    duration_ms: Optional[int] = None
 
 
 @dataclass
@@ -82,6 +84,8 @@ class AdminUser:
     username: str
     password_hash: str
     created_at: str
+    duration_ms: Optional[int] = None
+    duration_ms: Optional[int] = None
 
 
 @dataclass
@@ -109,6 +113,7 @@ class RequestLog:
     status: str
     channel: str
     created_at: str
+    duration_ms: Optional[int] = None
 
 
 def _build_kiro_headers(access_token: str) -> dict:
@@ -332,6 +337,15 @@ class AccountManager:
                 if "next_reset_at" not in columns:
                     conn.execute("ALTER TABLE accounts ADD COLUMN next_reset_at INTEGER")
                     logger.info("Added 'next_reset_at' column to accounts table")
+                
+                
+                # Add duration_ms field to request_logs table if it doesn't exist
+                cursor.execute("PRAGMA table_info(request_logs)")
+                log_columns = [col[1] for col in cursor.fetchall()]
+                
+                if "duration_ms" not in log_columns:
+                    conn.execute("ALTER TABLE request_logs ADD COLUMN duration_ms INTEGER")
+                    logger.info("Added 'duration_ms' column to request_logs table")
                 
                 conn.commit()
             logger.info(f"AccountManager initialized with database: {self._db_path}")
@@ -1090,7 +1104,8 @@ class AccountManager:
         input_tokens: int,
         output_tokens: int,
         status: str,
-        channel: str
+        channel: str,
+        duration_ms: Optional[int] = None
     ) -> int:
         """Log a request to the database.
 
@@ -1111,10 +1126,10 @@ class AccountManager:
             cursor = conn.execute(
                 """
                 INSERT INTO request_logs 
-                (api_key_id, account_id, model, input_tokens, output_tokens, status, channel, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (api_key_id, account_id, model, input_tokens, output_tokens, status, channel, created_at, duration_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (api_key_id, account_id, model, input_tokens, output_tokens, status, channel, created_at)
+                (api_key_id, account_id, model, input_tokens, output_tokens, status, channel, created_at, duration_ms)
             )
             conn.commit()
             log_id = cursor.lastrowid
@@ -1199,7 +1214,8 @@ class AccountManager:
                 "output_tokens": row["output_tokens"],
                 "status": row["status"],
                 "channel": row["channel"],
-                "created_at": row["created_at"]
+                "created_at": row["created_at"],
+                "duration_ms": row["duration_ms"] if "duration_ms" in row.keys() else None
             }
             for row in rows
         ]
