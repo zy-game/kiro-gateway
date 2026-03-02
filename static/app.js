@@ -523,10 +523,6 @@ function adjustTimeRange(direction) {
     const range = timeRanges[currentTimeRangeIndex];
     document.getElementById('timeRangeDisplay').textContent = range.label;
     
-    // Update button states
-    document.getElementById('btnDecreaseRange').disabled = (currentTimeRangeIndex === 0);
-    document.getElementById('btnIncreaseRange').disabled = (currentTimeRangeIndex === timeRanges.length - 1);
-    
     // Update chart titles
     document.getElementById('chartTitle').textContent = `📈 请求统计 (${range.label})`;
     document.getElementById('tokenChartTitle').textContent = `🔢 Token 使用统计 (${range.label})`;
