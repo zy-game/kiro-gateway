@@ -903,12 +903,21 @@ class AccountManager:
         ft_used = ft_limit = 0.0
         free_trial = candidate.get("freeTrialInfo")
         if free_trial:
-            ft_used = _safe_float(
-                free_trial.get("currentUsageWithPrecision") or free_trial.get("currentUsage")
-            )
-            ft_limit = _safe_float(
-                free_trial.get("usageLimitWithPrecision") or free_trial.get("usageLimit")
-            )
+            # Only count free trial usage/limit if not expired
+            trial_status = free_trial.get("freeTrialStatus", "").upper()
+            if trial_status == "ACTIVE":
+                ft_used = _safe_float(
+                    free_trial.get("currentUsageWithPrecision") or free_trial.get("currentUsage")
+                )
+                ft_limit = _safe_float(
+                    free_trial.get("usageLimitWithPrecision") or free_trial.get("usageLimit")
+                )
+                logger.debug(f"Free trial active: used={ft_used}, limit={ft_limit}")
+            elif trial_status == "EXPIRED":
+                logger.info(f"Free trial expired, ignoring trial usage/limit")
+            else:
+                # Unknown or missing status - be conservative and don't count it
+                logger.debug(f"Free trial status unknown or missing ('{trial_status}'), ignoring trial usage/limit")
 
         return int(monthly_used + ft_used), int(monthly_limit + ft_limit)
 
