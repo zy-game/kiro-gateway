@@ -519,11 +519,8 @@ function adjustTimeRange(direction) {
         currentTimeRangeIndex = timeRanges.length - 1;
     }
     
-    // Update display
-    const range = timeRanges[currentTimeRangeIndex];
-    document.getElementById('timeRangeDisplay').textContent = range.label;
-    
     // Update chart titles
+    const range = timeRanges[currentTimeRangeIndex];
     document.getElementById('chartTitle').textContent = `📈 请求统计 (${range.label})`;
     document.getElementById('tokenChartTitle').textContent = `🔢 Token 使用统计 (${range.label})`;
     
