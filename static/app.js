@@ -2,7 +2,36 @@
 window.addEventListener('DOMContentLoaded', () => {
     checkLoginStatus();
     initNavigation();
+    initChartWheelListeners();
 });
+
+// Initialize wheel event listeners for charts
+function initChartWheelListeners() {
+    const chartContainer = document.getElementById('chartContainer');
+    const tokenChartContainer = document.getElementById('tokenChartContainer');
+    
+    if (chartContainer) {
+        chartContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            if (e.deltaY < 0) {
+                adjustTimeRange(1);  // Scroll up: increase time range
+            } else {
+                adjustTimeRange(-1); // Scroll down: decrease time range
+            }
+        });
+    }
+    
+    if (tokenChartContainer) {
+        tokenChartContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            if (e.deltaY < 0) {
+                adjustTimeRange(1);
+            } else {
+                adjustTimeRange(-1);
+            }
+        });
+    }
+}
 
 // Check if user is logged in
 async function checkLoginStatus() {
@@ -463,16 +492,73 @@ function fallbackCopyToken(token) {
     document.body.removeChild(textarea);
 }
 
-// ==================== Users ====================
+// ==================== Dashboard & Charts ====================
 let hourlyChart = null;
 let tokenChart = null;
 
+// Time range state management
+let currentTimeRangeIndex = 4; // Default: 24 hours
+const timeRanges = [
+    { hours: 1, label: '最近 1 小时' },
+    { hours: 3, label: '最近 3 小时' },
+    { hours: 6, label: '最近 6 小时' },
+    { hours: 12, label: '最近 12 小时' },
+    { hours: 24, label: '最近 24 小时' },
+    { hours: 48, label: '最近 48 小时' },
+    { hours: 72, label: '最近 3 天' },
+    { hours: 168, label: '最近 7 天' }
+];
+
+// Adjust time range
+function adjustTimeRange(direction) {
+    currentTimeRangeIndex += direction;
+    
+    // Limit range
+    if (currentTimeRangeIndex < 0) currentTimeRangeIndex = 0;
+    if (currentTimeRangeIndex >= timeRanges.length) {
+        currentTimeRangeIndex = timeRanges.length - 1;
+    }
+    
+    // Update display
+    const range = timeRanges[currentTimeRangeIndex];
+    document.getElementById('timeRangeDisplay').textContent = range.label;
+    
+    // Update button states
+    document.getElementById('btnDecreaseRange').disabled = (currentTimeRangeIndex === 0);
+    document.getElementById('btnIncreaseRange').disabled = (currentTimeRangeIndex === timeRanges.length - 1);
+    
+    // Update chart titles
+    document.getElementById('chartTitle').textContent = `📈 请求统计 (${range.label})`;
+    document.getElementById('tokenChartTitle').textContent = `🔢 Token 使用统计 (${range.label})`;
+    
+    // Reload dashboard data
+    loadDashboard();
+}
+
+// Format chart label based on time range
+function formatChartLabel(dateStr, hours) {
+    const date = new Date(dateStr);
+    if (hours <= 6) {
+        // 1-6 hours: show HH:mm
+        return date.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    } else if (hours <= 24) {
+        // 12-24 hours: show MM/DD HH:mm
+        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    } else {
+        // 48+ hours: show MM/DD
+        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit' });
+    }
+}
+
 async function loadDashboard() {
     try {
+        const range = timeRanges[currentTimeRangeIndex];
+        const hours = range.hours;
+        
         const [accounts, tokens, stats] = await Promise.all([
             apiRequest('/admin/accounts'),
             apiRequest('/admin/api-keys'),
-            apiRequest('/admin/stats/hourly?hours=24')  // 24 hours
+            apiRequest(`/admin/stats/hourly?hours=${hours}`)
         ]);
         
         const totalUsage = accounts.reduce((sum, acc) => sum + (acc.usage || 0), 0);
@@ -481,15 +567,15 @@ async function loadDashboard() {
         document.getElementById('stat-tokens').textContent = tokens.length;
         document.getElementById('stat-usage').textContent = totalUsage.toFixed(2);
         
-        // Render charts
-        renderDailyChart(stats);
-        renderTokenChart(stats);
+        // Render charts with current time range
+        renderDailyChart(stats, hours);
+        renderTokenChart(stats, hours);
     } catch (error) {
         console.error('Failed to load dashboard:', error);
     }
 }
 
-function renderDailyChart(stats) {
+function renderDailyChart(stats, hours) {
     const ctx = document.getElementById('hourlyChart');
     if (!ctx) return;
     
@@ -498,10 +584,7 @@ function renderDailyChart(stats) {
         hourlyChart.destroy();
     }
     
-    const labels = stats.map(s => {
-        const date = new Date(s.hour);
-        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    });
+    const labels = stats.map(s => formatChartLabel(s.hour, hours));
     const data = stats.map(s => s.requests);
     
     hourlyChart = new Chart(ctx, {
@@ -540,7 +623,7 @@ function renderDailyChart(stats) {
     });
 }
 
-function renderTokenChart(stats) {
+function renderTokenChart(stats, hours) {
     const ctx = document.getElementById('tokenChart');
     if (!ctx) return;
     
@@ -549,10 +632,7 @@ function renderTokenChart(stats) {
         tokenChart.destroy();
     }
     
-    const labels = stats.map(s => {
-        const date = new Date(s.hour);
-        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit' });
-    });
+    const labels = stats.map(s => formatChartLabel(s.hour, hours));
     const inputData = stats.map(s => s.input_tokens);
     const outputData = stats.map(s => s.output_tokens);
     

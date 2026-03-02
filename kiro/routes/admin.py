@@ -364,7 +364,20 @@ async def delete_admin_user(request: Request, user_id: int) -> JSONResponse:
 
 @router.get("/stats/hourly", dependencies=[Depends(verify_session)])
 async def get_hourly_stats(request: Request, hours: int = 24) -> JSONResponse:
-    """Get hourly usage statistics."""
+    """Get hourly usage statistics.
+    
+    Args:
+        hours: Number of hours to query (1-168, default 24).
+    
+    Returns:
+        List of hourly statistics.
+    """
+    # Limit range: 1 hour to 7 days (168 hours)
+    if hours < 1:
+        hours = 1
+    elif hours > 168:
+        hours = 168
+    
     manager = request.app.state.auth_manager
     stats = manager.get_hourly_stats(hours=hours)
     return JSONResponse(stats)
