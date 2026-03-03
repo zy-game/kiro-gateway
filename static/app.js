@@ -2,36 +2,7 @@
 window.addEventListener('DOMContentLoaded', () => {
     checkLoginStatus();
     initNavigation();
-    initChartWheelListeners();
 });
-
-// Initialize wheel event listeners for charts
-function initChartWheelListeners() {
-    const chartContainer = document.getElementById('chartContainer');
-    const tokenChartContainer = document.getElementById('tokenChartContainer');
-    
-    if (chartContainer) {
-        chartContainer.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            if (e.deltaY < 0) {
-                adjustTimeRange(1);  // Scroll up: increase time range
-            } else {
-                adjustTimeRange(-1); // Scroll down: decrease time range
-            }
-        });
-    }
-    
-    if (tokenChartContainer) {
-        tokenChartContainer.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            if (e.deltaY < 0) {
-                adjustTimeRange(1);
-            } else {
-                adjustTimeRange(-1);
-            }
-        });
-    }
-}
 
 // Check if user is logged in
 async function checkLoginStatus() {
@@ -496,79 +467,47 @@ function fallbackCopyToken(token) {
 let hourlyChart = null;
 let tokenChart = null;
 
-// Time range state management
-let currentTimeRangeIndex = 4; // Default: 24 hours
-const timeRanges = [
-    { hours: 1, label: '最近 1 小时' },
-    { hours: 3, label: '最近 3 小时' },
-    { hours: 6, label: '最近 6 小时' },
-    { hours: 12, label: '最近 12 小时' },
-    { hours: 24, label: '最近 24 小时' },
-    { hours: 48, label: '最近 48 小时' },
-    { hours: 72, label: '最近 3 天' },
-    { hours: 168, label: '最近 7 天' }
-];
-
-// Adjust time range
-function adjustTimeRange(direction) {
-    currentTimeRangeIndex += direction;
-    
-    // Limit range
-    if (currentTimeRangeIndex < 0) currentTimeRangeIndex = 0;
-    if (currentTimeRangeIndex >= timeRanges.length) {
-        currentTimeRangeIndex = timeRanges.length - 1;
-    }
-    
-    // Update chart titles
-    const range = timeRanges[currentTimeRangeIndex];
-    document.getElementById('chartTitle').textContent = `📈 请求统计 (${range.label})`;
-    document.getElementById('tokenChartTitle').textContent = `🔢 Token 使用统计 (${range.label})`;
-    
-    // Reload dashboard data
-    loadDashboard();
-}
-
-// Format chart label based on time range
-function formatChartLabel(dateStr, hours) {
-    const date = new Date(dateStr);
-    if (hours <= 6) {
-        // 1-6 hours: show HH:mm
-        return date.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-    } else if (hours <= 24) {
-        // 12-24 hours: show MM/DD HH:mm
-        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    } else {
-        // 48+ hours: show MM/DD
-        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit' });
-    }
-}
-
 async function loadDashboard() {
     try {
-        const range = timeRanges[currentTimeRangeIndex];
-        const hours = range.hours;
-        
         const [accounts, tokens, stats] = await Promise.all([
             apiRequest('/admin/accounts'),
             apiRequest('/admin/api-keys'),
-            apiRequest(`/admin/stats/hourly?hours=${hours}`)
+            apiRequest('/admin/stats/daily?days=30')  // Fixed 30 days
         ]);
         
-        const totalUsage = accounts.reduce((sum, acc) => sum + (acc.usage || 0), 0);
+        // Calculate total usage and total limit
+        let totalUsage = 0;
+        let totalLimit = 0;
+        let hasUnlimited = false;
         
+        accounts.forEach(acc => {
+            totalUsage += acc.usage || 0;
+            if (acc.limit === 0) {
+                hasUnlimited = true;
+            } else {
+                totalLimit += acc.limit || 0;
+            }
+        });
+        
+        // Display statistics
         document.getElementById('stat-accounts').textContent = accounts.length;
         document.getElementById('stat-tokens').textContent = tokens.length;
-        document.getElementById('stat-usage').textContent = totalUsage.toFixed(2);
         
-        // Render charts with current time range
-        renderDailyChart(stats, hours);
-        renderTokenChart(stats, hours);
+        // Display "used/limit" or "used/limit+"
+        const usageText = hasUnlimited 
+            ? `${totalUsage.toFixed(2)} / ${totalLimit.toFixed(2)}+`
+            : `${totalUsage.toFixed(2)} / ${totalLimit.toFixed(2)}`;
+        document.getElementById('stat-usage').textContent = usageText;
+        
+        // Render charts (fixed 30 days)
+        renderDailyChart(stats);
+        renderTokenChart(stats);
     } catch (error) {
         console.error('Failed to load dashboard:', error);
     }
 }
 
-function renderDailyChart(stats, hours) {
+function renderDailyChart(stats) {
     const ctx = document.getElementById('hourlyChart');
     if (!ctx) return;
     
@@ -577,7 +516,11 @@ function renderDailyChart(stats, hours) {
         hourlyChart.destroy();
     }
     
-    const labels = stats.map(s => formatChartLabel(s.hour, hours));
+    // Format date labels: MM/DD
+    const labels = stats.map(s => {
+        const date = new Date(s.day);
+        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit' });
+    });
     const data = stats.map(s => s.requests);
     
     hourlyChart = new Chart(ctx, {
@@ -616,7 +559,7 @@ function renderDailyChart(stats, hours) {
     });
 }
 
-function renderTokenChart(stats, hours) {
+function renderTokenChart(stats) {
     const ctx = document.getElementById('tokenChart');
     if (!ctx) return;
     
@@ -625,7 +568,11 @@ function renderTokenChart(stats, hours) {
         tokenChart.destroy();
     }
     
-    const labels = stats.map(s => formatChartLabel(s.hour, hours));
+    // Format date labels: MM/DD
+    const labels = stats.map(s => {
+        const date = new Date(s.day);
+        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit' });
+    });
     const inputData = stats.map(s => s.input_tokens);
     const outputData = stats.map(s => s.output_tokens);
     

@@ -1311,6 +1311,43 @@ class AccountManager:
             for row in rows
         ]
 
+    def get_daily_stats(self, days: int = 30) -> List[dict]:
+        """Get daily usage statistics for the past N days.
+
+        Args:
+            days: Number of days to look back (default: 30).
+
+        Returns:
+            List of dicts with date, requests, input_tokens, output_tokens.
+        """
+        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+        
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT 
+                    strftime('%Y-%m-%d', created_at) as day,
+                    COUNT(*) as requests,
+                    SUM(input_tokens) as input_tokens,
+                    SUM(output_tokens) as output_tokens
+                FROM request_logs
+                WHERE created_at >= ?
+                GROUP BY day
+                ORDER BY day ASC
+                """,
+                (cutoff,)
+            ).fetchall()
+        
+        return [
+            {
+                "day": row["day"],
+                "requests": row["requests"],
+                "input_tokens": row["input_tokens"] or 0,
+                "output_tokens": row["output_tokens"] or 0
+            }
+            for row in rows
+        ]
+
     # ------------------------------------------------------------------
     # Session Management
     # ------------------------------------------------------------------

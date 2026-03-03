@@ -383,6 +383,21 @@ async def get_hourly_stats(request: Request, hours: int = 24) -> JSONResponse:
     return JSONResponse(stats)
 
 
+@router.get("/stats/daily", dependencies=[Depends(verify_session)])
+async def get_daily_stats(request: Request, days: int = 30) -> JSONResponse:
+    """Get daily usage statistics.
+    
+    Args:
+        days: Number of days to query (default 30).
+    
+    Returns:
+        List of daily statistics.
+    """
+    manager = request.app.state.auth_manager
+    stats = manager.get_daily_stats(days=days)
+    return JSONResponse(stats)
+
+
 @router.get("/logs", dependencies=[Depends(verify_session)])
 async def list_request_logs(
     request: Request, 
