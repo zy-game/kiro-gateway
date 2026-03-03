@@ -253,7 +253,33 @@ function showAddAccountModal() {
     document.getElementById('accountPriority').value = '0';
     document.getElementById('accountLimit').value = '0';
     document.getElementById('accountConfig').value = '';
+    updateConfigPlaceholder(); // Update placeholder for default type
     document.getElementById('accountModal').classList.add('show');
+}
+
+function updateConfigPlaceholder() {
+    const accountType = document.getElementById('accountType').value;
+    const configTextarea = document.getElementById('accountConfig');
+    
+    if (accountType === 'glm') {
+        configTextarea.placeholder = `直接粘贴 API Key，例如:
+your_glm_api_key_here
+
+或使用 JSON 格式:
+{
+  "api_key": "your_glm_api_key_here"
+}`;
+    } else {
+        // Default Kiro format
+        configTextarea.placeholder = `{
+  "accessToken": "...",
+  "refreshToken": "...",
+  "clientId": "...",
+  "clientSecret": "...",
+  "region": "us-east-1",
+  "profileArn": "..."
+}`;
+    }
 }
 
 function closeAccountModal() {
@@ -267,10 +293,20 @@ async function saveAccount(event) {
     const type = document.getElementById('accountType').value;
     const priority = parseInt(document.getElementById('accountPriority').value);
     const limit = parseFloat(document.getElementById('accountLimit').value);
-    const configText = document.getElementById('accountConfig').value;
+    const configText = document.getElementById('accountConfig').value.trim();
     
     try {
-        const config = JSON.parse(configText);
+        let config;
+        
+        // Smart config parsing: auto-wrap plain API key for GLM
+        if (type === 'glm' && !configText.startsWith('{')) {
+            // User entered plain API key, auto-wrap it
+            config = { api_key: configText };
+            console.log('Auto-wrapped plain API key into JSON format');
+        } else {
+            // Parse as JSON
+            config = JSON.parse(configText);
+        }
         
         const data = { type, priority, limit: limit, config };
         

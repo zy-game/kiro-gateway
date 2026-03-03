@@ -422,6 +422,45 @@ class AccountManager:
             raise KeyError(f"Account {account_id} not found")
         return self._row_to_account(row)
 
+    async def get_account_by_type(self, account_type: str) -> Optional[Account]:
+        """
+        Get an available account of the specified type.
+        
+        Selects accounts by:
+        1. Filter by type
+        2. Sort by priority DESC, usage ASC
+        3. Return first account that hasn't exceeded limit
+        
+        Args:
+            account_type: Account type ("kiro", "glm", etc.)
+        
+        Returns:
+            Account object or None if no available account
+        """
+        async with self._lock:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM accounts 
+                    WHERE type = ?
+                    ORDER BY priority DESC, usage ASC
+                    """,
+                    (account_type,)
+                ).fetchall()
+            
+            if not rows:
+                return None
+            
+            # Find first account that hasn't exceeded limit
+            for row in rows:
+                account = self._row_to_account(row)
+                # limit = 0 means unlimited
+                if account.limit == 0 or account.usage < account.limit:
+                    return account
+            
+            # All accounts exceeded limit
+            return None
+
     def create_account(
         self,
         type: str = "kiro",

@@ -461,6 +461,18 @@ body {
     font-family: 'Courier New', monospace;
 }
 
+.form-hint {
+    display: block;
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: #8b949e;
+    line-height: 1.5;
+}
+
+.form-hint strong {
+    color: #58a6ff;
+}
+
 .modal-actions {
     display: flex;
     gap: 10px;

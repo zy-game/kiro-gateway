@@ -77,6 +77,7 @@ from kiro.core.auth import AccountManager
 from kiro.core.cache import ModelInfoCache
 from kiro.core.model_resolver import ModelResolver
 from kiro.routes.api import router as anthropic_router
+from kiro.routes.openai import router as openai_router
 from kiro.routes.admin import router as admin_router
 from kiro.routes.auth import router as auth_router
 from kiro.middleware.exceptions import validation_exception_handler
@@ -422,6 +423,9 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 
 # --- Route Registration ---
+# OpenAI-compatible API: /v1/chat/completions, /v1/models
+app.include_router(openai_router)
+
 # Anthropic-compatible API: /v1/messages
 app.include_router(anthropic_router)
 
