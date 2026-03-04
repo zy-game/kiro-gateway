@@ -273,11 +273,11 @@ async def chat_completions(
         # Use provider's chat_openai() method for all providers
         if request_data.stream:
             # Streaming response with logging wrapper
-            final_usage = {"input_tokens": 0, "output_tokens": 0}
+            output_content = []
             
             async def stream_with_logging():
-                """Wrapper to track usage and log request."""
-                nonlocal final_usage
+                """Wrapper to collect output and log request."""
+                nonlocal output_content
                 try:
                     async for chunk in provider.chat_openai(
                         account=account,
@@ -288,29 +288,55 @@ async def chat_completions(
                         max_tokens=request_data.max_tokens,
                         tools=request_data.tools
                     ):
-                        # Try to extract usage from chunk
+                        # Collect output content for token counting
                         try:
                             chunk_str = chunk.decode('utf-8')
+                            
+                            # Extract content from OpenAI SSE format
                             if chunk_str.startswith('data: ') and '[DONE]' not in chunk_str:
                                 data = json.loads(chunk_str[6:])
-                                if 'usage' in data:
-                                    usage = data['usage']
-                                    logger.debug(f"Found usage in stream: {usage}")
-                                    final_usage['input_tokens'] = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
-                                    final_usage['output_tokens'] = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
-                        except Exception as e:
+                                delta = data.get('choices', [{}])[0].get('delta', {})
+                                content = delta.get('content', '')
+                                if content:
+                                    output_content.append(content)
+                            
+                            # Extract content from Anthropic SSE format
+                            elif 'event: content_block_delta' in chunk_str:
+                                lines = chunk_str.split('\n')
+                                for line in lines:
+                                    if line.startswith('data: '):
+                                        data = json.loads(line[6:])
+                                        if data.get('type') == 'content_block_delta':
+                                            text = data.get('delta', {}).get('text', '')
+                                            if text:
+                                                output_content.append(text)
+                                                logger.debug(f"Anthropic: Collected {len(text)} chars")
+                                                output_content.append(text)
+                        except:
                             pass
                         yield chunk
                 finally:
-                    # Log request after streaming completes
+                    # Calculate tokens using tokenizer
+                    from kiro.utils_pkg.tokenizer import count_message_tokens, count_tokens
                     duration_ms = int((time.time() - start_time) * 1000)
+                    
+                    # Calculate input tokens from request messages
+                    input_tokens = count_message_tokens(
+                        [{"role": msg.role, "content": msg.content} for msg in request_data.messages]
+                    )
+                    
+                    # Calculate output tokens from collected content
+                    output_text = ''.join(output_content)
+                    output_tokens = count_tokens(output_text)
+                    logger.info(f"OpenAI: {len(output_text)} chars, {output_tokens} tokens")
+                    
                     try:
                         auth_manager.log_request(
                             api_key_id=api_key_id,
                             account_id=account.id,
                             model=request_data.model,
-                            input_tokens=final_usage['input_tokens'],
-                            output_tokens=final_usage['output_tokens'],
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
                             status="success",
                             channel="openai",
                             duration_ms=duration_ms
@@ -339,17 +365,32 @@ async def chat_completions(
             response_data = b"".join(chunks)
             response_json = json.loads(response_data.decode("utf-8"))
             
-            # Log successful request
+            # Calculate tokens using tokenizer
+            from kiro.utils_pkg.tokenizer import count_message_tokens, count_tokens
             duration_ms = int((time.time() - start_time) * 1000)
-            usage = response_json.get("usage", {})
-            logger.debug(f"Non-streaming response usage: {usage}")
+            
+            # Calculate input tokens from request messages
+            input_tokens = count_message_tokens(
+                [{"role": msg.role, "content": msg.content} for msg in request_data.messages]
+            )
+            
+            # Calculate output tokens from response
+            output_text = ""
+            if "choices" in response_json and response_json["choices"]:
+                message = response_json["choices"][0].get("message", {})
+                content = message.get("content", "")
+                if content:
+                    output_text = content
+            output_tokens = count_tokens(output_text)
+            logger.info(f"OpenAI non-streaming: {len(output_text)} chars, {output_tokens} tokens")
+            
             try:
                 auth_manager.log_request(
                     api_key_id=api_key_id,
                     account_id=account.id,
                     model=request_data.model,
-                    input_tokens=usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0) or usage.get("completion_tokens", 0),
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                     status="success",
                     channel="openai",
                     duration_ms=duration_ms
@@ -485,11 +526,11 @@ async def messages(
         # Use provider's chat_anthropic() method for all providers
         if request_data.stream:
             # Streaming response with logging wrapper
-            final_usage = {"input_tokens": 0, "output_tokens": 0}
+            output_content = []
             
             async def stream_with_logging():
-                """Wrapper to track usage and log request."""
-                nonlocal final_usage
+                """Wrapper to collect output and log request."""
+                nonlocal output_content
                 try:
                     async for chunk in provider.chat_anthropic(
                         account=account,
@@ -501,31 +542,67 @@ async def messages(
                         system=request_data.system,
                         tools=request_data.tools
                     ):
-                        # Try to extract usage from Anthropic SSE chunk
+                        # Collect output content for token counting
                         try:
-                            chunk_str = chunk.decode('utf-8')
-                            if 'event: message_delta' in chunk_str or 'event: message_stop' in chunk_str:
+                            # Handle both bytes and str
+                            if isinstance(chunk, bytes):
+                                chunk_str = chunk.decode('utf-8')
+                            else:
+                                chunk_str = chunk
+                            logger.info(f"Anthropic chunk preview: {chunk_str[:100]}")
+                            if 'event: content_block_delta' in chunk_str:
                                 lines = chunk_str.split('\n')
                                 for line in lines:
                                     if line.startswith('data: '):
                                         data = json.loads(line[6:])
-                                        if 'usage' in data:
-                                            usage = data['usage']
-                                            final_usage['input_tokens'] = usage.get('input_tokens', 0)
-                                            final_usage['output_tokens'] = usage.get('output_tokens', 0)
-                        except:
-                            pass
+                                        if data.get('type') == 'content_block_delta':
+                                            delta = data.get('delta', {})
+                                            # Extract text from text_delta
+                                            text = delta.get('text', '')
+                                            if text:
+                                                output_content.append(text)
+                                                logger.debug(f"Anthropic: Collected text {len(text)} chars")
+                                            # Extract thinking from thinking_delta
+                                            thinking = delta.get('thinking', '')
+                                            if thinking:
+                                                output_content.append(thinking)
+                                                logger.debug(f"Anthropic: Collected thinking {len(thinking)} chars")
+                        except Exception as e:
+                            logger.debug(f"Anthropic: Error collecting content: {e}")
                         yield chunk
                 finally:
-                    # Log request after streaming completes
+                    # Calculate tokens using tokenizer
+                    from kiro.utils_pkg.tokenizer import count_message_tokens, count_tokens
                     duration_ms = int((time.time() - start_time) * 1000)
+                    
+                    # Calculate input tokens
+                    messages_for_count = []
+                    for msg in request_data.messages:
+                        if isinstance(msg.content, str):
+                            messages_for_count.append({"role": msg.role, "content": msg.content})
+                        elif isinstance(msg.content, list):
+                            text_content = ""
+                            for block in msg.content:
+                                if hasattr(block, 'type') and block.type == 'text':
+                                    text_content += block.text
+                            messages_for_count.append({"role": msg.role, "content": text_content})
+                    
+                    input_tokens = count_message_tokens(messages_for_count)
+                    if request_data.system:
+                        input_tokens += count_tokens(request_data.system)
+                    
+                    # Calculate output tokens
+                    output_text = ''.join(output_content)
+                    output_tokens = count_tokens(output_text)
+                    logger.info(f"Anthropic: Collected {len(output_content)} chunks, {len(output_text)} chars, {output_tokens} tokens")
+                    
                     try:
                         auth_manager.log_request(
                             api_key_id=api_key_id,
                             account_id=account.id,
                             model=request_data.model,
-                            input_tokens=final_usage['input_tokens'],
-                            output_tokens=final_usage['output_tokens'],
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
                             status="success",
                             channel="anthropic",
                             duration_ms=duration_ms
@@ -555,16 +632,42 @@ async def messages(
             response_data = b"".join(chunks)
             response_json = json.loads(response_data.decode("utf-8"))
             
-            # Log successful request
+            # Calculate tokens using tokenizer
+            from kiro.utils_pkg.tokenizer import count_message_tokens, count_tokens
             duration_ms = int((time.time() - start_time) * 1000)
-            usage = response_json.get("usage", {})
+            
+            # Calculate input tokens
+            messages_for_count = []
+            for msg in request_data.messages:
+                if isinstance(msg.content, str):
+                    messages_for_count.append({"role": msg.role, "content": msg.content})
+                elif isinstance(msg.content, list):
+                    text_content = ""
+                    for block in msg.content:
+                        if hasattr(block, 'type') and block.type == 'text':
+                            text_content += block.text
+                    messages_for_count.append({"role": msg.role, "content": text_content})
+            
+            input_tokens = count_message_tokens(messages_for_count)
+            if request_data.system:
+                input_tokens += count_tokens(request_data.system)
+            
+            # Calculate output tokens from response
+            output_text = ""
+            if "content" in response_json:
+                for block in response_json["content"]:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        output_text += block.get("text", "")
+            output_tokens = count_tokens(output_text)
+            logger.info(f"OpenAI non-streaming: {len(output_text)} chars, {output_tokens} tokens")
+            
             try:
                 auth_manager.log_request(
                     api_key_id=api_key_id,
                     account_id=account.id,
                     model=request_data.model,
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                     status="success",
                     channel="anthropic",
                     duration_ms=duration_ms

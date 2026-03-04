@@ -264,6 +264,7 @@ class GLMProvider(BaseProvider):
             # Streaming mode: convert OpenAI SSE to Anthropic SSE
             message_id = f"msg_{int(time.time() * 1000)}"
             content_started = False
+            final_usage = {"input_tokens": 0, "output_tokens": 0}
             
             async for chunk in self.chat_openai(
                 account=account,
@@ -289,6 +290,12 @@ class GLMProvider(BaseProvider):
                     delta = data.get('choices', [{}])[0].get('delta', {})
                     content = delta.get('content', '')
                     
+                    # Extract usage if present
+                    if 'usage' in data:
+                        usage = data['usage']
+                        final_usage['input_tokens'] = usage.get('prompt_tokens', 0)
+                        final_usage['output_tokens'] = usage.get('completion_tokens', 0)
+                    
                     if content:
                         # Send message_start on first content
                         if not content_started:
@@ -305,6 +312,10 @@ class GLMProvider(BaseProvider):
             # Send closing events
             if content_started:
                 yield f'event: content_block_stop\ndata: {json.dumps({"type": "content_block_stop", "index": 0})}\n\n'.encode('utf-8')
+            
+            # Send message_delta with usage
+            yield f'event: message_delta\ndata: {json.dumps({"type": "message_delta", "delta": {{"stop_reason": "end_turn"}}, "usage": final_usage})}\n\n'.encode('utf-8')
+            
             yield f'event: message_stop\ndata: {json.dumps({"type": "message_stop"})}\n\n'.encode('utf-8')
         
         else:
