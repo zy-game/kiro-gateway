@@ -16,13 +16,14 @@ class BaseProvider(ABC):
     Abstract base class for AI providers.
     
     All providers must implement:
-    - chat(): Send chat request and return OpenAI-compatible SSE stream
+    - chat_openai(): Send chat request and return OpenAI-compatible SSE stream
+    - chat_anthropic(): Send chat request and return Anthropic-compatible SSE stream
     - get_supported_models(): Return list of supported model names
     
     Providers handle:
     - API authentication
     - Request format conversion
-    - Response format conversion to OpenAI SSE
+    - Response format conversion to OpenAI/Anthropic SSE
     - Error handling
     """
     
@@ -36,7 +37,7 @@ class BaseProvider(ABC):
         self.name = name
     
     @abstractmethod
-    async def chat(
+    async def chat_openai(
         self,
         account: Account,
         model: str,
@@ -75,6 +76,91 @@ class BaseProvider(ABC):
             Exception: If API call fails
         """
         pass
+    
+    @abstractmethod
+    async def chat_anthropic(
+        self,
+        account: Account,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: bool = True,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        system: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        **kwargs
+    ) -> AsyncIterator[bytes]:
+        """
+        Send chat request and stream response in Anthropic format.
+        
+        This method must:
+        1. Extract credentials from account.config
+        2. Convert request to provider's format
+        3. Call provider's API
+        4. Convert response to Anthropic SSE format
+        5. Handle errors gracefully
+        
+        Args:
+            account: Account with credentials in config field
+            model: Model name
+            messages: Chat messages in Anthropic format
+            stream: Whether to stream response
+            temperature: Sampling temperature (0-2)
+            max_tokens: Maximum tokens to generate
+            system: System prompt (Anthropic-specific)
+            tools: Tool definitions in Anthropic format
+            **kwargs: Additional provider-specific parameters
+        
+        Yields:
+            bytes: SSE chunks in Anthropic format (b"event: ...\\ndata: {...}\\n\\n")
+        
+        Raises:
+            ValueError: If account config is invalid
+            Exception: If API call fails
+        """
+        pass
+    
+    # Backward compatibility: chat() is an alias for chat_openai()
+    async def chat(
+        self,
+        account: Account,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: bool = True,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        **kwargs
+    ) -> AsyncIterator[bytes]:
+        """
+        Send chat request and stream response in OpenAI format.
+        
+        This is an alias for chat_openai() for backward compatibility.
+        
+        Args:
+            account: Account with credentials in config field
+            model: Model name
+            messages: Chat messages in OpenAI format
+            stream: Whether to stream response
+            temperature: Sampling temperature (0-2)
+            max_tokens: Maximum tokens to generate
+            tools: Tool definitions in OpenAI format
+            **kwargs: Additional provider-specific parameters
+        
+        Yields:
+            bytes: SSE chunks in OpenAI format (b"data: {...}\\n\\n")
+        """
+        async for chunk in self.chat_openai(
+            account=account,
+            model=model,
+            messages=messages,
+            stream=stream,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            tools=tools,
+            **kwargs
+        ):
+            yield chunk
     
     @abstractmethod
     def get_supported_models(self) -> List[str]:

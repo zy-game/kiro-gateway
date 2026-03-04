@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from loguru import logger
 
 from kiro.core.auth import Account, AccountManager
+from kiro.core.cache import ModelInfoCache
 from kiro.providers import BaseProvider, get_provider
 
 
@@ -25,14 +26,16 @@ class ProviderRouter:
     Also handles account selection for the chosen provider.
     """
     
-    def __init__(self, account_manager: AccountManager):
+    def __init__(self, account_manager: AccountManager, model_cache: ModelInfoCache = None):
         """
         Initialize router.
         
         Args:
             account_manager: Account manager for retrieving accounts
+            model_cache: Model info cache (required for Kiro provider)
         """
         self.account_manager = account_manager
+        self.model_cache = model_cache
         # Cache provider instances
         self._provider_cache = {}
     
@@ -65,7 +68,11 @@ class ProviderRouter:
             Provider instance
         """
         if provider_type not in self._provider_cache:
-            self._provider_cache[provider_type] = get_provider(provider_type)
+            self._provider_cache[provider_type] = get_provider(
+                provider_type,
+                auth_manager=self.account_manager,
+                model_cache=self.model_cache
+            )
         return self._provider_cache[provider_type]
     
     async def route_request(self, model: str) -> Tuple[BaseProvider, Account]:

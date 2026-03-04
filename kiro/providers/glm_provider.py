@@ -26,7 +26,7 @@ class GLMProvider(BaseProvider):
     BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
     
     SUPPORTED_MODELS = [
-        "glm-4-flash",
+        "glm-4.7-flash",
         "glm-4-plus",
         "glm-4-air",
         "glm-4-airx",
@@ -50,7 +50,7 @@ class GLMProvider(BaseProvider):
         """
         return self.SUPPORTED_MODELS.copy()
     
-    async def chat(
+    async def chat_openai(
         self,
         account: Account,
         model: str,
@@ -170,3 +170,171 @@ class GLMProvider(BaseProvider):
             if "GLM API error" not in str(e) and "GLM rate limit" not in str(e):
                 logger.error(f"GLM request error for account {account.id}: {e}")
             raise
+    
+    async def chat_anthropic(
+        self,
+        account: Account,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: bool = True,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        system: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        **kwargs
+    ) -> AsyncIterator[bytes]:
+        """
+        Send chat request to GLM API and stream response in Anthropic format.
+        
+        This method converts between formats:
+        1. Anthropic messages to OpenAI messages (if needed)
+        2. Call chat_openai() to get OpenAI SSE
+        3. Convert OpenAI SSE to Anthropic SSE
+        
+        Args:
+            account: Account with GLM API key in config.api_key
+            model: Model name (e.g., "glm-4-flash")
+            messages: Chat messages in Anthropic format
+            stream: Whether to stream response
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+            system: System prompt (Anthropic-specific)
+            tools: Tool definitions in Anthropic format
+            **kwargs: Additional parameters
+        
+        Yields:
+            bytes: SSE chunks in Anthropic format
+        
+        Raises:
+            ValueError: If account config is invalid
+            Exception: If API call fails
+        """
+        import json
+        import time
+        
+        # Convert Anthropic messages to OpenAI format
+        openai_messages = []
+        
+        # Add system message if provided
+        if system:
+            # Handle both string and list of content blocks
+            if isinstance(system, str):
+                openai_messages.append({"role": "system", "content": system})
+            elif isinstance(system, list):
+                # Extract text from content blocks
+                system_text = ""
+                for block in system:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        system_text += block.get("text", "")
+                    elif hasattr(block, "type") and block.type == "text":
+                        system_text += block.text
+                if system_text:
+                    openai_messages.append({"role": "system", "content": system_text})
+            else:
+                # Single content block object
+                if hasattr(system, "text"):
+                    openai_messages.append({"role": "system", "content": system.text})
+                else:
+                    openai_messages.append({"role": "system", "content": str(system)})
+        
+        # Convert Anthropic messages to OpenAI format
+        for msg in messages:
+            if isinstance(msg, dict):
+                role = msg.get("role")
+                content = msg.get("content")
+            else:
+                # Pydantic model
+                role = msg.role
+                content = msg.content
+            
+            # Extract text content
+            if isinstance(content, list):
+                text_content = ""
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text_content += block.get("text", "")
+                    elif hasattr(block, "type") and block.type == "text":
+                        text_content += block.text
+                openai_messages.append({"role": role, "content": text_content})
+            else:
+                openai_messages.append({"role": role, "content": str(content)})
+        
+        # Call chat_openai() to get OpenAI SSE
+        if stream:
+            # Streaming mode: convert OpenAI SSE to Anthropic SSE
+            message_id = f"msg_{int(time.time() * 1000)}"
+            content_started = False
+            
+            async for chunk in self.chat_openai(
+                account=account,
+                model=model,
+                messages=openai_messages,
+                stream=True,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+                **kwargs
+            ):
+                # Parse OpenAI SSE chunk
+                chunk_str = chunk.decode('utf-8')
+                if not chunk_str.startswith('data: '):
+                    continue
+                
+                data_str = chunk_str[6:].strip()
+                if not data_str or data_str == '[DONE]':
+                    continue
+                
+                try:
+                    data = json.loads(data_str)
+                    delta = data.get('choices', [{}])[0].get('delta', {})
+                    content = delta.get('content', '')
+                    
+                    if content:
+                        # Send message_start on first content
+                        if not content_started:
+                            yield f'event: message_start\ndata: {json.dumps({"type": "message_start", "message": {"id": message_id, "type": "message", "role": "assistant", "content": [], "model": model}})}\n\n'.encode('utf-8')
+                            yield f'event: content_block_start\ndata: {json.dumps({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}})}\n\n'.encode('utf-8')
+                            content_started = True
+                        
+                        # Send content_block_delta
+                        yield f'event: content_block_delta\ndata: {json.dumps({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": content}})}\n\n'.encode('utf-8')
+                
+                except json.JSONDecodeError:
+                    pass
+            
+            # Send closing events
+            if content_started:
+                yield f'event: content_block_stop\ndata: {json.dumps({"type": "content_block_stop", "index": 0})}\n\n'.encode('utf-8')
+            yield f'event: message_stop\ndata: {json.dumps({"type": "message_stop"})}\n\n'.encode('utf-8')
+        
+        else:
+            # Non-streaming mode: convert OpenAI response to Anthropic format
+            chunks = []
+            async for chunk in self.chat_openai(
+                account=account,
+                model=model,
+                messages=openai_messages,
+                stream=False,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+                **kwargs
+            ):
+                chunks.append(chunk)
+            
+            response_data = json.loads(b"".join(chunks).decode("utf-8"))
+            
+            # Convert OpenAI response to Anthropic format
+            content_text = response_data.get('choices', [{}])[0].get('message', {}).get('content', '')
+            
+            anthropic_response = {
+                "id": f"msg_{int(time.time() * 1000)}",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": content_text}],
+                "model": model,
+                "stop_reason": "end_turn",
+                "usage": response_data.get('usage', {})
+            }
+            
+            yield json.dumps(anthropic_response).encode('utf-8')

@@ -65,7 +65,7 @@ from kiro.utils_pkg.parsers import (
 )
 
 # Streaming
-from kiro.streaming.api import (
+from kiro.streaming.kiro import (
     stream_kiro_to_anthropic,
     collect_anthropic_response,
 )
