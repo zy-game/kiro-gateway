@@ -295,9 +295,10 @@ async def chat_completions(
                                 data = json.loads(chunk_str[6:])
                                 if 'usage' in data:
                                     usage = data['usage']
+                                    logger.debug(f"Found usage in stream: {usage}")
                                     final_usage['input_tokens'] = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
                                     final_usage['output_tokens'] = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
-                        except:
+                        except Exception as e:
                             pass
                         yield chunk
                 finally:
@@ -341,6 +342,7 @@ async def chat_completions(
             # Log successful request
             duration_ms = int((time.time() - start_time) * 1000)
             usage = response_json.get("usage", {})
+            logger.debug(f"Non-streaming response usage: {usage}")
             try:
                 auth_manager.log_request(
                     api_key_id=api_key_id,
