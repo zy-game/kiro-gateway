@@ -282,17 +282,34 @@ class KiroProvider(BaseProvider):
                 
                 # Try to parse and enhance error message
                 error_message = error_text
+                error_reason = None
                 try:
                     error_json = json.loads(error_text)
                     from kiro.kiro_errors import enhance_kiro_error
                     error_info = enhance_kiro_error(error_json)
                     error_message = error_info.user_message
+                    error_reason = error_info.reason
                     logger.debug(f"Original Kiro error: {error_info.original_message} (reason: {error_info.reason})")
                 except (json.JSONDecodeError, KeyError, ImportError):
                     pass
                 
                 logger.warning(f"Kiro API error ({response.status_code}): {error_message[:100]}")
-                raise Exception(f"Kiro API error ({response.status_code}): {error_message}")
+                
+                # If 402 quota exceeded, refresh account usage to prevent reusing this account
+                if response.status_code == 402 and error_reason == "MONTHLY_QUOTA_EXCEEDED":
+                    logger.info(f"Account {account.id} quota exceeded, refreshing usage...")
+                    try:
+                        await self.auth_manager.refresh_usage(account)
+                        logger.info(f"Account {account.id} usage refreshed successfully")
+                    except Exception as refresh_error:
+                        logger.error(f"Failed to refresh account usage: {refresh_error}")
+                
+                # Return proper HTTPException instead of generic Exception
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=error_message
+                )
             
             # Stream response
             if stream:

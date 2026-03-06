@@ -455,7 +455,8 @@ class AccountManager:
             for row in rows:
                 account = self._row_to_account(row)
                 # limit = 0 means unlimited
-                if account.limit == 0 or account.usage < account.limit:
+                # Filter out accounts where usage >= limit - 1 to prevent quota errors
+                if account.limit == 0 or account.usage < account.limit - 1:
                     return account
             
             # All accounts exceeded limit
@@ -717,7 +718,7 @@ class AccountManager:
 
             available = [
                 a for a in accounts
-                if a.limit == 0 or a.usage < a.limit
+                if a.limit == 0 or a.usage < a.limit - 1
             ]
             if not available:
                 raise RuntimeError(
