@@ -10,32 +10,22 @@ async function checkLoginStatus() {
         const response = await fetch('/auth/me', {
             credentials: 'include'
         });
-        if (!response.ok) {
-            // Prevent redirect loop - only redirect once
-            if (!sessionStorage.getItem('redirecting')) {
-                sessionStorage.setItem('redirecting', 'true');
-                window.location.href = '/login';
-            }
-            return;
+        if (response.ok) {
+            const data = await response.json();
+            console.log('Logged in as:', data.username);
+        } else {
+            // Don't redirect here - the /admin route already handles authentication
+            // If we're on this page, it means the backend already validated the session
+            console.log('Session check returned non-OK, but continuing (backend already validated)');
         }
-        // Clear redirect flag on successful login check
-        sessionStorage.removeItem('redirecting');
-        
-        const data = await response.json();
-        console.log('Logged in as:', data.username);
-        
-        // Add small delay to ensure cookies are fully propagated (especially in Docker)
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Load dashboard data
-        loadDashboard();
     } catch (error) {
-        // Prevent redirect loop
-        if (!sessionStorage.getItem('redirecting')) {
-            sessionStorage.setItem('redirecting', 'true');
-            window.location.href = '/login';
-        }
+        // Don't redirect on error - backend already handled authentication
+        console.log('Error checking login status, but continuing:', error);
     }
+    
+    // Always load dashboard - if session is truly invalid, subsequent API calls will fail
+    // and apiRequest() will handle the redirect to /login
+    loadDashboard();
 }
 
 // Initialize navigation
