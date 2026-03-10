@@ -449,17 +449,33 @@ class AccountManager:
                 ).fetchall()
             
             if not rows:
+                logger.warning(f"No accounts found for type '{account_type}'")
                 return None
             
+            logger.info(f"Found {len(rows)} account(s) for type '{account_type}'")
+            
             # Find first account that hasn't exceeded limit
-            for row in rows:
+            for idx, row in enumerate(rows):
                 account = self._row_to_account(row)
+                threshold = account.limit - 1
+                is_unlimited = account.limit == 0
+                is_available = account.usage < threshold
+                
+                logger.info(
+                    f"Account #{idx+1}: id={account.id}, "
+                    f"usage={account.usage:.2f}, limit={account.limit}, "
+                    f"threshold={threshold}, unlimited={is_unlimited}, "
+                    f"available={is_available or is_unlimited}"
+                )
+                
                 # limit = 0 means unlimited
                 # Filter out accounts where usage >= limit - 1 to prevent quota errors
-                if account.limit == 0 or account.usage < account.limit - 1:
+                if is_unlimited or is_available:
+                    logger.info(f"Selected account {account.id} (usage={account.usage:.2f}, limit={account.limit})")
                     return account
             
             # All accounts exceeded limit
+            logger.warning(f"All accounts for type '{account_type}' have exceeded their limits")
             return None
 
     def create_account(

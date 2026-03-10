@@ -267,7 +267,7 @@ async def chat_completions(
         provider, account = await provider_router.route_request(request_data.model)
         
         logger.info(
-            f"Routed to provider '{provider.name}' with account {account.id}"
+            f"Routed to provider '{provider.name}' with account {account.email}"
         )
         
         # Use provider's chat_openai() method for all providers
@@ -520,7 +520,7 @@ async def messages(
         provider, account = await provider_router.route_request(request_data.model)
         
         logger.info(
-            f"Routed to provider '{provider.name}' with account {account.id}"
+            f"Routed to provider '{provider.name}' with account {account.email}"
         )
         
         # Use provider's chat_anthropic() method for all providers
@@ -549,7 +549,7 @@ async def messages(
                                 chunk_str = chunk.decode('utf-8')
                             else:
                                 chunk_str = chunk
-                            logger.info(f"Anthropic chunk preview: {chunk_str[:100]}")
+                            # logger.info(f"Anthropic chunk preview: {chunk_str[:100]}")
                             if 'event: content_block_delta' in chunk_str:
                                 lines = chunk_str.split('\n')
                                 for line in lines:

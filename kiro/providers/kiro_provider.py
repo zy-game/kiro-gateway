@@ -304,12 +304,26 @@ class KiroProvider(BaseProvider):
                     except Exception as refresh_error:
                         logger.error(f"Failed to refresh account usage: {refresh_error}")
                 
-                # Return proper HTTPException instead of generic Exception
-                from fastapi import HTTPException
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=error_message
-                )
+                # For streaming mode, yield error event instead of raising exception
+                # (can't raise HTTPException after streaming starts)
+                if stream:
+                    # Yield Anthropic error event
+                    error_event = {
+                        "type": "error",
+                        "error": {
+                            "type": "api_error",
+                            "message": error_message
+                        }
+                    }
+                    yield f"event: error\ndata: {json.dumps(error_event)}\n\n".encode('utf-8')
+                    return
+                else:
+                    # For non-streaming, we can still raise HTTPException
+                    from fastapi import HTTPException
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=error_message
+                    )
             
             # Stream response
             if stream:

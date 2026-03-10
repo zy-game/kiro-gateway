@@ -31,6 +31,7 @@ with connection pooling for better resource management.
 """
 
 import asyncio
+import json
 from typing import Optional
 
 import httpx
@@ -310,10 +311,20 @@ class KiroHttpClient:
         else:
             # Fallback if no error was captured (shouldn't happen)
             if stream:
-                raise HTTPException(
-                    status_code=504,
-                    detail=f"Streaming failed after {max_retries} attempts. Unknown error."
-                )
+                # For streaming, return error response instead of raising exception
+                error_event = {
+                    "type": "error",
+                    "error": {
+                        "type": "api_error",
+                        "message": f"Streaming failed after {max_retries} attempts. Unknown error."
+                    }
+                }
+                # Return a mock response that yields the error
+                class ErrorResponse:
+                    status_code = 504
+                    async def aiter_lines(self):
+                        yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+                return ErrorResponse()
             else:
                 raise HTTPException(
                     status_code=502,
