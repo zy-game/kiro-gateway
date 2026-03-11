@@ -57,6 +57,7 @@ class KiroProvider(BaseProvider):
             "claude-sonnet-4.5",
             "claude-opus-4.5",
             "claude-3.7-sonnet",
+            "claude-sonnet-4-5-20250929"
         ]
     
     async def chat_openai(
