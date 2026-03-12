@@ -41,13 +41,29 @@ class GLMProvider(BaseProvider):
         """Initialize GLM provider."""
         super().__init__("glm")
     
-    def get_supported_models(self) -> List[str]:
+    def get_supported_models(self, db_manager=None) -> List[str]:
         """
         Get list of supported GLM models.
+        
+        Priority:
+        1. If db_manager provided, query from database
+        2. Otherwise, return default hardcoded list
+        
+        Args:
+            db_manager: Optional AccountManager instance for database queries
         
         Returns:
             List of model IDs
         """
+        if db_manager:
+            try:
+                models = db_manager.get_models_by_provider("glm")
+                if models:
+                    return models
+            except Exception as e:
+                logger.warning(f"Failed to get models from database: {e}, using defaults")
+        
+        # Fallback to hardcoded list
         return self.SUPPORTED_MODELS.copy()
     
     async def chat_openai(

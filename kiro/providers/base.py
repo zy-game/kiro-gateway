@@ -163,16 +163,23 @@ class BaseProvider(ABC):
             yield chunk
     
     @abstractmethod
-    def get_supported_models(self) -> List[str]:
+    def get_supported_models(self, db_manager: Optional[Any] = None) -> List[str]:
         """
         Get list of supported model names.
+        
+        Priority:
+        1. If db_manager provided, query from database
+        2. Otherwise, return default hardcoded list
+        
+        Args:
+            db_manager: Optional AccountManager instance for database queries
         
         Returns:
             List of model IDs (e.g., ["glm-4-flash", "glm-4-plus"])
         """
         pass
     
-    def supports_model(self, model: str) -> bool:
+    def supports_model(self, model: str, db_manager: Optional[Any] = None) -> bool:
         """
         Check if this provider supports the given model.
         
@@ -181,11 +188,12 @@ class BaseProvider(ABC):
         
         Args:
             model: Model name to check
+            db_manager: Optional AccountManager instance for database queries
         
         Returns:
             True if model is supported
         """
-        supported = self.get_supported_models()
+        supported = self.get_supported_models(db_manager)
         if model in supported:
             return True
         # Check prefix match (e.g., "glm-4-flash-20240101" matches "glm-4-flash")

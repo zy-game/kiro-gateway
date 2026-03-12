@@ -61,6 +61,9 @@ function switchPage(pageName) {
         case 'dashboard':
             loadDashboard();
             break;
+        case 'models':
+            loadModels();
+            break;
         case 'accounts':
             loadAccounts();
             break;
@@ -487,6 +490,210 @@ function fallbackCopyToken(token) {
     }
     
     document.body.removeChild(textarea);
+}
+
+// ==================== Models ====================
+async function loadModels(providerType = null) {
+    const container = document.getElementById('modelsList');
+    container.innerHTML = '<div class="loading">加载中...</div>';
+    
+    try {
+        const url = providerType 
+            ? `/admin/models?provider_type=${providerType}&enabled_only=false`
+            : '/admin/models?enabled_only=false';
+        const models = await apiRequest(url);
+        
+        if (models.length === 0) {
+            container.innerHTML = '<div class="loading">暂无模型</div>';
+            return;
+        }
+        
+        // Display all models in a flat list
+        let html = '';
+        models.forEach(model => {
+            const statusBadge = model.enabled 
+                ? '<span style="background: #238636; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">启用</span>'
+                : '<span style="background: #6e7681; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">禁用</span>';
+            
+            // Provider badge with different colors
+            const providerColors = {
+                'kiro': '#58a6ff',
+                'glm': '#3fb950'
+            };
+            const providerColor = providerColors[model.provider_type] || '#8b949e';
+            const providerBadge = `<span style="background: ${providerColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; text-transform: uppercase;">${model.provider_type}</span>`;
+            
+            html += `
+                <div class="data-item">
+                    <div class="data-item-header">
+                        <div class="data-item-title">
+                            ${providerBadge}
+                            ${model.display_name || model.model_id}
+                            ${statusBadge}
+                        </div>
+                        <div class="data-item-actions">
+                            <button class="btn-sm ${model.enabled ? 'btn-secondary' : 'btn-primary'}" 
+                                    onclick="toggleModelEnabled(${model.id}, ${!model.enabled})">
+                                ${model.enabled ? '禁用' : '启用'}
+                            </button>
+                            <button class="btn-sm btn-primary" onclick="editModel(${model.id})">编辑</button>
+                            <button class="btn-sm btn-danger" onclick="deleteModel(${model.id})">删除</button>
+                        </div>
+                    </div>
+                    <div class="data-item-body">
+                        <div class="data-field">
+                            <div class="data-field-label">模型 ID</div>
+                            <div class="data-field-value" style="font-family: monospace;">${model.model_id}</div>
+                        </div>
+                        ${model.display_name ? `
+                        <div class="data-field">
+                            <div class="data-field-label">显示名称</div>
+                            <div class="data-field-value">${model.display_name}</div>
+                        </div>
+                        ` : ''}
+                        <div class="data-field">
+                            <div class="data-field-label">优先级</div>
+                            <div class="data-field-value">${model.priority}</div>
+                        </div>
+                        <div class="data-field">
+                            <div class="data-field-label">创建时间</div>
+                            <div class="data-field-value">${new Date(model.created_at).toLocaleString('zh-CN')}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `<div class="loading">加载失败: ${error.message}</div>`;
+    }
+}
+
+function showAddModelModal() {
+    document.getElementById('modelModalTitle').textContent = '添加模型';
+    document.getElementById('modelDbId').value = '';
+    document.getElementById('modelProviderType').value = 'kiro';
+    document.getElementById('modelProviderType').disabled = false;
+    document.getElementById('modelId').value = '';
+    document.getElementById('modelId').disabled = false;
+    document.getElementById('modelDisplayName').value = '';
+    document.getElementById('modelPriority').value = '0';
+    document.getElementById('modelModal').classList.add('show');
+}
+
+function closeModelModal() {
+    document.getElementById('modelModal').classList.remove('show');
+}
+
+async function saveModel(event) {
+    event.preventDefault();
+    
+    const id = document.getElementById('modelDbId').value;
+    const providerType = document.getElementById('modelProviderType').value;
+    const modelId = document.getElementById('modelId').value;
+    const displayName = document.getElementById('modelDisplayName').value || null;
+    const priority = parseInt(document.getElementById('modelPriority').value);
+    
+    try {
+        if (id) {
+            // Update existing model (don't change enabled status)
+            const data = { display_name: displayName, priority };
+            await apiRequest(`/admin/models/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            });
+            showNotification('模型更新成功');
+        } else {
+            // Create new model (default to enabled)
+            const data = {
+                provider_type: providerType,
+                model_id: modelId,
+                display_name: displayName,
+                priority,
+                enabled: true
+            };
+            await apiRequest('/admin/models', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+            showNotification('模型添加成功');
+        }
+        
+        closeModelModal();
+        const filterProvider = document.getElementById('filterProvider').value;
+        loadModels(filterProvider || null);
+    } catch (error) {
+        showNotification('操作失败: ' + error.message, 'error');
+    }
+}
+
+async function editModel(id) {
+    try {
+        const model = await apiRequest(`/admin/models/${id}`);
+        
+        document.getElementById('modelModalTitle').textContent = '编辑模型';
+        document.getElementById('modelDbId').value = model.id;
+        document.getElementById('modelProviderType').value = model.provider_type;
+        document.getElementById('modelProviderType').disabled = true; // Can't change provider
+        document.getElementById('modelId').value = model.model_id;
+        document.getElementById('modelId').disabled = true; // Can't change model ID
+        document.getElementById('modelDisplayName').value = model.display_name || '';
+        document.getElementById('modelPriority').value = model.priority;
+        document.getElementById('modelModal').classList.add('show');
+    } catch (error) {
+        showNotification('加载失败: ' + error.message, 'error');
+    }
+}
+
+async function deleteModel(id) {
+    if (!confirm('确定要删除此模型吗？')) return;
+    
+    try {
+        await apiRequest(`/admin/models/${id}`, { method: 'DELETE' });
+        showNotification('模型删除成功');
+        const filterProvider = document.getElementById('filterProvider').value;
+        loadModels(filterProvider || null);
+    } catch (error) {
+        showNotification('删除失败: ' + error.message, 'error');
+    }
+}
+
+async function toggleModelEnabled(id, enabled) {
+    try {
+        await apiRequest(`/admin/models/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ enabled })
+        });
+        showNotification(enabled ? '模型已启用' : '模型已禁用');
+        const filterProvider = document.getElementById('filterProvider').value;
+        loadModels(filterProvider || null);
+    } catch (error) {
+        showNotification('操作失败: ' + error.message, 'error');
+    }
+}
+
+async function syncModels() {
+    if (!confirm('确定要同步默认模型吗？这将添加所有 provider 的默认模型到数据库。')) return;
+    
+    try {
+        // Sync both providers
+        const kiroResult = await apiRequest('/admin/models/sync/kiro', { method: 'POST' });
+        const glmResult = await apiRequest('/admin/models/sync/glm', { method: 'POST' });
+        
+        const totalAdded = kiroResult.added.length + glmResult.added.length;
+        
+        if (totalAdded > 0) {
+            showNotification(`同步成功！添加了 ${totalAdded} 个新模型`);
+        } else {
+            showNotification('同步完成，没有新模型需要添加');
+        }
+        
+        const filterProvider = document.getElementById('filterProvider').value;
+        loadModels(filterProvider || null);
+    } catch (error) {
+        showNotification('同步失败: ' + error.message, 'error');
+    }
 }
 
 // ==================== Dashboard & Charts ====================

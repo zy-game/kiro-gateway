@@ -40,16 +40,32 @@ class KiroProvider(BaseProvider):
         self.auth_manager = auth_manager
         self.model_cache = model_cache
     
-    def get_supported_models(self) -> List[str]:
+    def get_supported_models(self, db_manager=None) -> List[str]:
         """
         Get list of supported Kiro models.
         
-        Note: This returns a basic list. The actual model list
-        is dynamically fetched from Kiro API and cached in ModelInfoCache.
+        Priority:
+        1. If db_manager provided, query from database
+        2. Otherwise, return default hardcoded list
+        
+        Note: The actual model list is also dynamically fetched from 
+        Kiro API and cached in ModelInfoCache at startup.
+        
+        Args:
+            db_manager: Optional AccountManager instance for database queries
         
         Returns:
             List of common model IDs
         """
+        if db_manager:
+            try:
+                models = db_manager.get_models_by_provider("kiro")
+                if models:
+                    return models
+            except Exception as e:
+                logger.warning(f"Failed to get models from database: {e}, using defaults")
+        
+        # Fallback to hardcoded list
         return [
             "auto",
             "claude-sonnet-4",

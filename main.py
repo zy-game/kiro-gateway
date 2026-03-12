@@ -304,6 +304,44 @@ async def lifespan(app: FastAPI):
         logger.warning("  Login at http://localhost:8000/admin")
         logger.warning("=" * 60)
 
+    # Initialize models table if empty
+    models_count = app.state.auth_manager.count_models()
+    if models_count == 0:
+        logger.info("Models table is empty, initializing with default models...")
+        from kiro.providers.kiro_provider import KiroProvider
+        from kiro.providers.glm_provider import GLMProvider
+        
+        # Initialize Kiro models
+        kiro_provider = KiroProvider(app.state.auth_manager, app.state.model_cache)
+        kiro_models = kiro_provider.get_supported_models(db_manager=None)
+        for model_id in kiro_models:
+            try:
+                app.state.auth_manager.create_model(
+                    provider_type="kiro",
+                    model_id=model_id,
+                    enabled=True,
+                    priority=0,
+                )
+            except ValueError:
+                pass  # Model already exists
+        
+        # Initialize GLM models
+        glm_provider = GLMProvider()
+        glm_models = glm_provider.get_supported_models(db_manager=None)
+        for model_id in glm_models:
+            try:
+                app.state.auth_manager.create_model(
+                    provider_type="glm",
+                    model_id=model_id,
+                    enabled=True,
+                    priority=0,
+                )
+            except ValueError:
+                pass  # Model already exists
+        
+        final_count = app.state.auth_manager.count_models()
+        logger.info(f"Initialized {final_count} models in database")
+
     # BLOCKING: Load models from Kiro API at startup
     # This ensures the cache is populated BEFORE accepting any requests.
     # No race conditions - requests only start after yield.

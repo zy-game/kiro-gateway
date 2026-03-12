@@ -295,6 +295,25 @@ class AccountManager:
         ON sessions(expires_at)
     """
 
+    _CREATE_MODELS_TABLE_SQL = """
+        CREATE TABLE IF NOT EXISTS models (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider_type TEXT    NOT NULL,
+            model_id      TEXT    NOT NULL,
+            display_name  TEXT,
+            enabled       INTEGER NOT NULL DEFAULT 1,
+            priority      INTEGER NOT NULL DEFAULT 0,
+            created_at    TEXT    NOT NULL,
+            updated_at    TEXT    NOT NULL,
+            UNIQUE(provider_type, model_id)
+        )
+    """
+
+    _CREATE_MODELS_INDEX_SQL = """
+        CREATE INDEX IF NOT EXISTS idx_models_provider_type 
+        ON models(provider_type, enabled)
+    """
+
     def __init__(self, db_path: str = "accounts.db") -> None:
         self._db_path = str(Path(db_path).expanduser())
         self._lock = asyncio.Lock()
@@ -322,6 +341,8 @@ class AccountManager:
                 conn.execute(self._CREATE_REQUEST_LOGS_INDEX_SQL)
                 conn.execute(self._CREATE_SESSIONS_TABLE_SQL)
                 conn.execute(self._CREATE_SESSIONS_INDEX_SQL)
+                conn.execute(self._CREATE_MODELS_TABLE_SQL)
+                conn.execute(self._CREATE_MODELS_INDEX_SQL)
                 
                 # Add new fields to accounts table if they don't exist
                 cursor = conn.cursor()
@@ -1484,3 +1505,228 @@ class AccountManager:
             logger.info(f"Cleaned up {deleted} expired sessions")
         
         return deleted
+
+    # ------------------------------------------------------------------
+    # Model Management
+    # ------------------------------------------------------------------
+
+    def list_models(
+        self, 
+        provider_type: Optional[str] = None, 
+        enabled_only: bool = True
+    ) -> List[dict]:
+        """List models with optional filtering.
+
+        Args:
+            provider_type: Filter by provider type (e.g., 'kiro', 'glm'). None = all providers.
+            enabled_only: If True, only return enabled models.
+
+        Returns:
+            List of model dicts with all fields.
+        """
+        with self._connect() as conn:
+            query = "SELECT * FROM models WHERE 1=1"
+            params = []
+            
+            if provider_type:
+                query += " AND provider_type = ?"
+                params.append(provider_type)
+            
+            if enabled_only:
+                query += " AND enabled = 1"
+            
+            query += " ORDER BY provider_type, priority DESC, model_id"
+            
+            rows = conn.execute(query, params).fetchall()
+        
+        return [
+            {
+                "id": row["id"],
+                "provider_type": row["provider_type"],
+                "model_id": row["model_id"],
+                "display_name": row["display_name"],
+                "enabled": bool(row["enabled"]),
+                "priority": row["priority"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+    def get_model(self, model_id: int) -> dict:
+        """Get a single model by database ID.
+
+        Args:
+            model_id: Model primary key.
+
+        Returns:
+            Model dict.
+
+        Raises:
+            KeyError: If model not found.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM models WHERE id = ?", (model_id,)
+            ).fetchone()
+        
+        if row is None:
+            raise KeyError(f"Model {model_id} not found")
+        
+        return {
+            "id": row["id"],
+            "provider_type": row["provider_type"],
+            "model_id": row["model_id"],
+            "display_name": row["display_name"],
+            "enabled": bool(row["enabled"]),
+            "priority": row["priority"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def create_model(
+        self,
+        provider_type: str,
+        model_id: str,
+        display_name: Optional[str] = None,
+        enabled: bool = True,
+        priority: int = 0,
+    ) -> dict:
+        """Create a new model.
+
+        Args:
+            provider_type: Provider type (e.g., 'kiro', 'glm').
+            model_id: Model identifier.
+            display_name: Optional display name.
+            enabled: Whether model is enabled.
+            priority: Priority for sorting (higher = higher priority).
+
+        Returns:
+            Created model dict.
+
+        Raises:
+            ValueError: If model already exists for this provider.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        
+        try:
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO models 
+                    (provider_type, model_id, display_name, enabled, priority, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (provider_type, model_id, display_name, int(enabled), priority, now, now),
+                )
+                conn.commit()
+                db_id = cursor.lastrowid
+        except sqlite3.IntegrityError:
+            raise ValueError(
+                f"Model '{model_id}' already exists for provider '{provider_type}'"
+            )
+        
+        logger.info(f"Created model: {provider_type}/{model_id} (id={db_id})")
+        return self.get_model(db_id)
+
+    def update_model(self, model_id: int, **kwargs: Any) -> dict:
+        """Update model fields.
+
+        Supported kwargs: display_name, enabled, priority.
+
+        Args:
+            model_id: Model primary key.
+            **kwargs: Fields to update.
+
+        Returns:
+            Updated model dict.
+
+        Raises:
+            KeyError: If model not found.
+            ValueError: If no valid fields provided.
+        """
+        # Ensure model exists
+        self.get_model(model_id)
+        
+        allowed_fields = {
+            "display_name": "display_name",
+            "enabled": "enabled",
+            "priority": "priority",
+        }
+        
+        sets = []
+        values = []
+        
+        for key, col in allowed_fields.items():
+            if key in kwargs:
+                val = kwargs[key]
+                if key == "enabled":
+                    val = int(bool(val))
+                sets.append(f"{col} = ?")
+                values.append(val)
+        
+        if not sets:
+            raise ValueError("No valid fields provided for update")
+        
+        # Always update updated_at
+        sets.append("updated_at = ?")
+        values.append(datetime.now(timezone.utc).isoformat())
+        
+        values.append(model_id)
+        sql = f"UPDATE models SET {', '.join(sets)} WHERE id = ?"
+        
+        with self._connect() as conn:
+            conn.execute(sql, values)
+            conn.commit()
+        
+        logger.info(f"Updated model id={model_id} fields={list(kwargs.keys())}")
+        return self.get_model(model_id)
+
+    def delete_model(self, model_id: int) -> None:
+        """Delete a model.
+
+        Args:
+            model_id: Model primary key.
+
+        Raises:
+            KeyError: If model not found.
+        """
+        self.get_model(model_id)  # raises KeyError if missing
+        
+        with self._connect() as conn:
+            conn.execute("DELETE FROM models WHERE id = ?", (model_id,))
+            conn.commit()
+        
+        logger.info(f"Deleted model id={model_id}")
+
+    def get_models_by_provider(self, provider_type: str) -> List[str]:
+        """Get list of enabled model IDs for a specific provider.
+
+        Args:
+            provider_type: Provider type (e.g., 'kiro', 'glm').
+
+        Returns:
+            List of model_id strings (only enabled models).
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT model_id FROM models 
+                WHERE provider_type = ? AND enabled = 1
+                ORDER BY priority DESC, model_id
+                """,
+                (provider_type,)
+            ).fetchall()
+        
+        return [row["model_id"] for row in rows]
+
+    def count_models(self) -> int:
+        """Count total number of models in database.
+
+        Returns:
+            Total model count.
+        """
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) as count FROM models").fetchone()
+        
+        return row["count"] if row else 0

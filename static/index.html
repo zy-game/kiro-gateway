@@ -21,10 +21,9 @@
                     <span class="nav-icon">📊</span>
                     <span class="nav-text">仪表盘</span>
                 </a>
-                <a href="#" class="nav-item disabled">
-                    <span class="nav-icon">🔌</span>
-                    <span class="nav-text">渠道列表</span>
-                    <span class="badge">即将推出</span>
+                <a href="#" class="nav-item" data-page="models">
+                    <span class="nav-icon">🎯</span>
+                    <span class="nav-text">模型管理</span>
                 </a>
                 <a href="#" class="nav-item" data-page="accounts">
                     <span class="nav-icon">👤</span>
@@ -88,6 +87,27 @@
                     <div class="chart-container" id="tokenChartContainer">
                         <h3>🔢 Token 使用统计</h3>
                         <canvas id="tokenChart" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Models Page -->
+            <div id="page-models" class="page">
+                <div class="page-header">
+                    <h1>🎯 模型管理</h1>
+                    <div class="page-actions">
+                        <select id="filterProvider" onchange="loadModels(this.value)" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; margin-right: 8px;">
+                            <option value="">全部渠道</option>
+                            <option value="kiro">Kiro</option>
+                            <option value="glm">GLM</option>
+                        </select>
+                        <button class="btn-primary" onclick="showAddModelModal()">➕ 添加模型</button>
+                        <button class="btn-secondary" onclick="syncModels()">🔄 同步默认模型</button>
+                    </div>
+                </div>
+                <div class="page-body">
+                    <div id="modelsList" class="data-list">
+                        <div class="loading">加载中...</div>
                     </div>
                 </div>
             </div>
@@ -218,6 +238,50 @@
                 <div class="modal-actions">
                     <button type="submit" class="btn-primary">生成</button>
                     <button type="button" class="btn-secondary" onclick="closeTokenModal()">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Model Modal -->
+    <div id="modelModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modelModalTitle">添加模型</h2>
+                <span class="close" onclick="closeModelModal()">&times;</span>
+            </div>
+            <form id="modelForm" onsubmit="saveModel(event)">
+                <input type="hidden" id="modelDbId" />
+                
+                <div class="form-group">
+                    <label>渠道类型:</label>
+                    <select id="modelProviderType" required>
+                        <option value="kiro">Kiro</option>
+                        <option value="glm">GLM</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>模型 ID:</label>
+                    <input type="text" id="modelId" required placeholder="例如: claude-sonnet-4.5" />
+                    <small class="form-hint">模型的唯一标识符</small>
+                </div>
+
+                <div class="form-group">
+                    <label>显示名称 (可选):</label>
+                    <input type="text" id="modelDisplayName" placeholder="例如: Claude Sonnet 4.5" />
+                    <small class="form-hint">用于前端展示的友好名称</small>
+                </div>
+
+                <div class="form-group">
+                    <label>优先级:</label>
+                    <input type="number" id="modelPriority" value="0" />
+                    <small class="form-hint">数值越大优先级越高</small>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">保存</button>
+                    <button type="button" class="btn-secondary" onclick="closeModelModal()">取消</button>
                 </div>
             </form>
         </div>

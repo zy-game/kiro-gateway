@@ -420,3 +420,215 @@ async def list_request_logs(
         "limit": limit,
         "offset": offset
     })
+
+
+# ------------------------------------------------------------------
+# Model Management Routes
+# ------------------------------------------------------------------
+
+class ModelCreateRequest(BaseModel):
+    """Request body for creating a model."""
+    provider_type: str = Field(..., description="Provider type (kiro, glm)")
+    model_id: str = Field(..., description="Model identifier")
+    display_name: Optional[str] = Field(None, description="Display name")
+    enabled: bool = Field(default=True, description="Whether model is enabled")
+    priority: int = Field(default=0, description="Priority for sorting")
+
+
+class ModelUpdateRequest(BaseModel):
+    """Request body for updating a model."""
+    display_name: Optional[str] = None
+    enabled: Optional[bool] = None
+    priority: Optional[int] = None
+
+
+@router.get("/models", dependencies=[Depends(verify_session)])
+async def list_models(
+    request: Request,
+    provider_type: Optional[str] = None,
+    enabled_only: bool = True
+) -> JSONResponse:
+    """List all models with optional filtering.
+    
+    Args:
+        provider_type: Filter by provider type (kiro, glm, etc.)
+        enabled_only: If True, only return enabled models
+    
+    Returns:
+        JSON array of model objects
+    """
+    manager = request.app.state.auth_manager
+    models = manager.list_models(provider_type=provider_type, enabled_only=enabled_only)
+    return JSONResponse(models)
+
+
+@router.post("/models", dependencies=[Depends(verify_session)], status_code=201)
+async def create_model(request: Request, body: ModelCreateRequest) -> JSONResponse:
+    """Create a new model.
+    
+    Args:
+        body: Model creation parameters
+    
+    Returns:
+        Created model object
+    
+    Raises:
+        HTTPException: 400 if model already exists
+    """
+    manager = request.app.state.auth_manager
+    try:
+        model = manager.create_model(
+            provider_type=body.provider_type,
+            model_id=body.model_id,
+            display_name=body.display_name,
+            enabled=body.enabled,
+            priority=body.priority,
+        )
+        logger.info(f"Admin: created model {body.provider_type}/{body.model_id}")
+        return JSONResponse(model, status_code=201)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/models/{model_id}", dependencies=[Depends(verify_session)])
+async def get_model(request: Request, model_id: int) -> JSONResponse:
+    """Get a single model by ID.
+    
+    Args:
+        model_id: Model primary key
+    
+    Returns:
+        Model object
+    
+    Raises:
+        HTTPException: 404 if not found
+    """
+    manager = request.app.state.auth_manager
+    try:
+        model = manager.get_model(model_id)
+        return JSONResponse(model)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+
+@router.put("/models/{model_id}", dependencies=[Depends(verify_session)])
+async def update_model(
+    request: Request,
+    model_id: int,
+    body: ModelUpdateRequest
+) -> JSONResponse:
+    """Update model fields.
+    
+    Args:
+        model_id: Model primary key
+        body: Fields to update
+    
+    Returns:
+        Updated model object
+    
+    Raises:
+        HTTPException: 404 if not found, 400 if no fields provided
+    """
+    manager = request.app.state.auth_manager
+    try:
+        manager.get_model(model_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+    
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields provided for update")
+    
+    try:
+        model = manager.update_model(model_id, **updates)
+        logger.info(f"Admin: updated model id={model_id}")
+        return JSONResponse(model)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/models/{model_id}", dependencies=[Depends(verify_session)], status_code=204)
+async def delete_model(request: Request, model_id: int) -> JSONResponse:
+    """Delete a model.
+    
+    Args:
+        model_id: Model primary key
+    
+    Raises:
+        HTTPException: 404 if not found
+    """
+    manager = request.app.state.auth_manager
+    try:
+        manager.delete_model(model_id)
+        logger.info(f"Admin: deleted model id={model_id}")
+        return JSONResponse(None, status_code=204)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+
+@router.post("/models/sync/{provider_type}", dependencies=[Depends(verify_session)])
+async def sync_provider_models(request: Request, provider_type: str) -> JSONResponse:
+    """Sync default models for a provider.
+    
+    This will add any missing default models from the provider's hardcoded list
+    to the database. Existing models are not modified.
+    
+    Args:
+        provider_type: Provider type (kiro, glm)
+    
+    Returns:
+        JSON with sync results
+    
+    Raises:
+        HTTPException: 400 if provider not found
+    """
+    manager = request.app.state.auth_manager
+    
+    # Get provider instance
+    from kiro.providers.kiro_provider import KiroProvider
+    from kiro.providers.glm_provider import GLMProvider
+    
+    provider_map = {
+        "kiro": KiroProvider(manager, request.app.state.model_cache),
+        "glm": GLMProvider(),
+    }
+    
+    if provider_type not in provider_map:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown provider type: {provider_type}. Valid types: {list(provider_map.keys())}"
+        )
+    
+    provider = provider_map[provider_type]
+    
+    # Get default models from provider (without db_manager to get hardcoded list)
+    default_models = provider.get_supported_models(db_manager=None)
+    
+    # Get existing models from database
+    existing_models = set(manager.get_models_by_provider(provider_type))
+    
+    # Add missing models
+    added = []
+    for model_id in default_models:
+        if model_id not in existing_models:
+            try:
+                model = manager.create_model(
+                    provider_type=provider_type,
+                    model_id=model_id,
+                    enabled=True,
+                    priority=0,
+                )
+                added.append(model_id)
+            except ValueError:
+                # Model already exists (race condition), skip
+                pass
+    
+    logger.info(f"Admin: synced {len(added)} models for provider {provider_type}")
+    
+    return JSONResponse({
+        "provider_type": provider_type,
+        "added": added,
+        "total_default": len(default_models),
+        "total_existing": len(existing_models),
+        "total_after": len(existing_models) + len(added),
+    })
