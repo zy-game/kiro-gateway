@@ -1,8 +1,8 @@
 // Check login status on page load
-/*window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', () => {
     checkLoginStatus();
     initNavigation();
-});*/
+});
 
 // Check if user is logged in
 async function checkLoginStatus() {
