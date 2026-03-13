@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kiro Gateway - 管理后台</title>
+    <link rel="icon" type="image/jpeg" href="/static/assets/icon.jpg">
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
+
 <body>
     <div class="layout">
         <!-- Sidebar -->
@@ -15,7 +18,7 @@
                 <h2>🚀 Kiro Gateway</h2>
                 <p class="version">v2.3</p>
             </div>
-            
+
             <nav class="sidebar-nav">
                 <a href="#" class="nav-item active" data-page="dashboard">
                     <span class="nav-icon">📊</span>
@@ -38,7 +41,7 @@
                     <span class="nav-text">请求日志</span>
                 </a>
             </nav>
-            
+
             <div class="sidebar-footer">
                 <button class="btn-logout" onclick="logout()">
                     <span>🚪</span> 退出登录
@@ -77,13 +80,13 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Charts -->
                     <div class="chart-container" id="chartContainer">
                         <h3>📈 请求统计</h3>
                         <canvas id="hourlyChart" height="80"></canvas>
                     </div>
-                    
+
                     <div class="chart-container" id="tokenChartContainer">
                         <h3>🔢 Token 使用统计</h3>
                         <canvas id="tokenChart" height="80"></canvas>
@@ -96,7 +99,8 @@
                 <div class="page-header">
                     <h1>🎯 模型管理</h1>
                     <div class="page-actions">
-                        <select id="filterProvider" onchange="loadModels(this.value)" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; margin-right: 8px;">
+                        <select id="filterProvider" onchange="loadModels(this.value)"
+                            style="padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; margin-right: 8px;">
                             <option value="">全部渠道</option>
                             <option value="kiro">Kiro</option>
                             <option value="glm">GLM</option>
@@ -164,12 +168,12 @@
                         <button class="btn-primary" onclick="searchLogs()">🔍 搜索</button>
                         <button class="btn-secondary" onclick="clearSearch()">清除</button>
                     </div>
-                    
+
                     <!-- Logs Table -->
                     <div id="logsList" class="logs-container">
                         <div class="loading">加载中...</div>
                     </div>
-                    
+
                     <!-- Pagination -->
                     <div id="logsPagination"></div>
                 </div>
@@ -186,7 +190,7 @@
             </div>
             <form id="accountForm" onsubmit="saveAccount(event)">
                 <input type="hidden" id="accountId" />
-                
+
                 <div class="form-group">
                     <label>类型:</label>
                     <select id="accountType" required onchange="updateConfigPlaceholder()">
@@ -209,7 +213,8 @@
                     <label>配置:</label>
                     <textarea id="accountConfig" rows="12" required></textarea>
                     <small class="form-hint">
-                        <strong>Kiro:</strong> 需要完整的 JSON 配置 (accessToken, refreshToken, clientId, clientSecret, region, profileArn)<br>
+                        <strong>Kiro:</strong> 需要完整的 JSON 配置 (accessToken, refreshToken, clientId, clientSecret, region,
+                        profileArn)<br>
                         <strong>GLM:</strong> 可以直接粘贴 API Key，或使用 JSON 格式 {"api_key": "..."}
                     </small>
                 </div>
@@ -252,7 +257,7 @@
             </div>
             <form id="modelForm" onsubmit="saveModel(event)">
                 <input type="hidden" id="modelDbId" />
-                
+
                 <div class="form-group">
                     <label>渠道类型:</label>
                     <select id="modelProviderType" required>
@@ -318,4 +323,5 @@
     <script src="/static/app.js"></script>
     <script src="/static/logs.js"></script>
 </body>
+
 </html>
