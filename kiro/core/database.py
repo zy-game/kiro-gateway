@@ -533,3 +533,235 @@ class Database:
             db.refresh_usage(1, 0.0)  # Reset usage to 0
         """
         return self.update("accounts", {"usage": new_usage}, "id = ?", (account_id,))
+    
+    # ------------------------------------------------------------------
+    # API Key management methods
+    # ------------------------------------------------------------------
+    
+    def get_api_key(self, key_id: int) -> Optional[sqlite3.Row]:
+        """Fetch a single API key by ID.
+        
+        Args:
+            key_id: API key primary key.
+        
+        Returns:
+            API key row or None if not found.
+        
+        Example:
+            api_key = db.get_api_key(1)
+            if api_key:
+                print(api_key["key"], api_key["name"])
+        """
+        return self.fetch_one(
+            "SELECT * FROM api_keys WHERE id = ?",
+            (key_id,)
+        )
+    
+    def list_api_keys(self) -> List[sqlite3.Row]:
+        """List all API keys.
+        
+        Returns:
+            List of API key rows ordered by ID DESC.
+        
+        Example:
+            api_keys = db.list_api_keys()
+            for key in api_keys:
+                print(key["id"], key["name"], key["created_at"])
+        """
+        return self.fetch_all(
+            "SELECT * FROM api_keys ORDER BY id DESC"
+        )
+    
+    def create_api_key(
+        self,
+        name: str,
+        key: str,
+        created_at: Optional[str] = None
+    ) -> int:
+        """Create a new API key.
+        
+        Args:
+            name: Human-readable name/description for the key.
+            key: The actual API key string (should be unique).
+            created_at: Optional ISO 8601 timestamp. If None, uses current time.
+        
+        Returns:
+            ID of the newly created API key.
+        
+        Example:
+            from datetime import datetime, timezone
+            
+            key_id = db.create_api_key(
+                name="Production Key",
+                key="sk-YOUR_API_KEY_HERE",
+                created_at=datetime.now(timezone.utc).isoformat()
+            )
+        """
+        if created_at is None:
+            from datetime import datetime, timezone
+            created_at = datetime.now(timezone.utc).isoformat()
+        
+        data = {
+            "key": key,
+            "name": name,
+            "created_at": created_at
+        }
+        
+        return self.insert("api_keys", data)
+    
+    def delete_api_key(self, key_id: int) -> int:
+        """Delete an API key.
+        
+        Args:
+            key_id: API key primary key.
+        
+        Returns:
+            Number of rows deleted (1 if key existed, 0 otherwise).
+        
+        Example:
+            deleted = db.delete_api_key(1)
+            if deleted:
+                print("API key deleted successfully")
+        """
+        return self.delete("api_keys", "id = ?", (key_id,))
+    
+    def verify_api_key(self, key: str) -> bool:
+        """Verify if an API key exists in the database.
+        
+        Args:
+            key: The API key string to verify.
+        
+        Returns:
+            True if the key exists, False otherwise.
+        
+        Example:
+            if db.verify_api_key("sk-YOUR_API_KEY_HERE"):
+                print("Valid API key")
+            else:
+                print("Invalid API key")
+        """
+        row = self.fetch_one(
+            "SELECT 1 FROM api_keys WHERE key = ?",
+            (key,)
+        )
+        return row is not None
+    
+    # ------------------------------------------------------------------
+    # Admin User management methods
+    # ------------------------------------------------------------------
+    
+    def get_admin_user(self, username: str) -> Optional[sqlite3.Row]:
+        """Fetch a single admin user by username.
+        
+        Args:
+            username: Admin username (unique identifier).
+        
+        Returns:
+            Admin user row or None if not found.
+        
+        Example:
+            user = db.get_admin_user("admin")
+            if user:
+                print(user["id"], user["username"], user["created_at"])
+        """
+        return self.fetch_one(
+            "SELECT * FROM admin_users WHERE username = ?",
+            (username,)
+        )
+    
+    def list_admin_users(self) -> List[sqlite3.Row]:
+        """List all admin users.
+        
+        Returns:
+            List of admin user rows ordered by ID.
+        
+        Example:
+            users = db.list_admin_users()
+            for user in users:
+                print(user["id"], user["username"], user["created_at"])
+        """
+        return self.fetch_all(
+            "SELECT * FROM admin_users ORDER BY id"
+        )
+    
+    def create_admin_user(
+        self,
+        username: str,
+        password_hash: str,
+        created_at: Optional[str] = None
+    ) -> int:
+        """Create a new admin user.
+        
+        Args:
+            username: Unique username for the admin.
+            password_hash: Hashed password (should be pre-hashed by caller).
+            created_at: Optional ISO 8601 timestamp. If None, uses current time.
+        
+        Returns:
+            ID of the newly created admin user.
+        
+        Raises:
+            sqlite3.IntegrityError: If username already exists.
+        
+        Example:
+            from datetime import datetime, timezone
+            
+            user_id = db.create_admin_user(
+                username="admin",
+                password_hash="hashed_password_here",
+                created_at=datetime.now(timezone.utc).isoformat()
+            )
+        """
+        if created_at is None:
+            from datetime import datetime, timezone
+            created_at = datetime.now(timezone.utc).isoformat()
+        
+        data = {
+            "username": username,
+            "password_hash": password_hash,
+            "created_at": created_at
+        }
+        
+        return self.insert("admin_users", data)
+    
+    def update_admin_password(
+        self,
+        username: str,
+        password_hash: str
+    ) -> int:
+        """Update an admin user's password.
+        
+        Args:
+            username: Admin username to update.
+            password_hash: New hashed password (should be pre-hashed by caller).
+        
+        Returns:
+            Number of rows updated (1 if user exists, 0 otherwise).
+        
+        Example:
+            rows_updated = db.update_admin_password("admin", "new_hashed_password")
+            if rows_updated:
+                print("Password updated successfully")
+        """
+        return self.update(
+            "admin_users",
+            {"password_hash": password_hash},
+            "username = ?",
+            (username,)
+        )
+    
+    def delete_admin_user(self, username: str) -> int:
+        """Delete an admin user by username.
+        
+        Args:
+            username: Admin username to delete.
+        
+        Returns:
+            Number of rows deleted (1 if user existed, 0 otherwise).
+        
+        Example:
+            deleted = db.delete_admin_user("old_admin")
+            if deleted:
+                print("Admin user deleted successfully")
+        """
+        return self.delete("admin_users", "username = ?", (username,))
