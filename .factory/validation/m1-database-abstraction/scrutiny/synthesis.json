@@ -1,6 +1,6 @@
 {
   "milestone": "m1-database-abstraction",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -27,20 +27,20 @@
     "passed": 0,
     "failed": 0,
     "failedFeatures": [],
-    "note": "No new features completed since round 1. Fix features (m1-fix-1, m1-fix-2, m1-fix-3) are still pending."
+    "note": "No new features completed since round 2. Fix features (m1-fix-1, m1-fix-2, m1-fix-3) remain pending and must be implemented before validation can pass."
   },
   "blockingIssues": [
     {
       "featureId": "m1-fix-1-test-teardown-errors",
       "severity": "blocking",
-      "description": "Test suite still has 18 teardown errors due to Windows file locking issues (PermissionError when deleting temp database files). While the actual tests pass, the teardown failures indicate improper resource cleanup that could cause issues in production. Fix feature created but not yet implemented.",
-      "recommendation": "Implement m1-fix-1: Fix test fixtures to properly close database connections before cleanup. Use explicit db.close() or ensure context managers fully exit before attempting file deletion."
+      "description": "Test suite still has 18 teardown errors due to Windows file locking issues (PermissionError when deleting temp database files in tests/unit/test_accountmanager_migration.py). While the actual tests pass, the teardown failures indicate improper resource cleanup that could cause issues in production. Fix feature created but not yet implemented.",
+      "recommendation": "Implement m1-fix-1: Fix test fixtures to properly close database connections before cleanup. The AccountManager likely holds database connections open. Add explicit db.close() or ensure context managers fully exit before attempting file deletion."
     },
     {
       "featureId": "m1-fix-2-add-dev-dependencies",
       "severity": "blocking",
       "description": "mypy and flake8 are still not installed in the environment, preventing type checking and linting validation. These are essential code quality tools that should be available. Fix feature created but not yet implemented.",
-      "recommendation": "Implement m1-fix-2: Add mypy and flake8 to requirements.txt or create a requirements-dev.txt file with development dependencies."
+      "recommendation": "Implement m1-fix-2: Add mypy and flake8 to requirements.txt or create a requirements-dev.txt file with development dependencies, then install them."
     },
     {
       "featureId": "m1-fix-3-replace-deprecated-datetime",
@@ -52,5 +52,5 @@
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/m1-database-abstraction/scrutiny/synthesis.json (round 1)"
+  "previousRound": ".factory/validation/m1-database-abstraction/scrutiny/synthesis.json (round 2)"
 }
