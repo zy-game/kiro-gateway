@@ -2,8 +2,8 @@
 """
 Authentication routes for admin web UI.
 
-Provides login/logout functionality with JWT-based authentication.
-JWT tokens are stateless and don't require server-side storage.
+Provides login/logout functionality with database-backed session management.
+Sessions are stored in the database and validated on each request.
 """
 
 import os
@@ -11,7 +11,6 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
-import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -20,10 +19,8 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# JWT configuration - use fixed secret key from environment or generate a persistent one
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "kiro-gateway-default-secret-key-change-in-production")
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_DAYS = 7
+# Session configuration
+SESSION_EXPIRATION_DAYS = 7
 
 
 class LoginRequest(BaseModel):
@@ -39,44 +36,13 @@ class LoginResponse(BaseModel):
     token: Optional[str] = None
 
 
-def create_jwt_token(username: str) -> str:
-    """Create a JWT token for the user.
-    
-    Args:
-        username: Username to encode in token.
+def create_session_token() -> str:
+    """Generate a secure random session token.
     
     Returns:
-        JWT token string.
+        Random session token string (32 bytes hex = 64 characters).
     """
-    expiration = datetime.utcnow() + timedelta(days=JWT_EXPIRATION_DAYS)
-    payload = {
-        "sub": username,
-        "exp": expiration,
-        "iat": datetime.utcnow()
-    }
-    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
-    return token
-
-
-def verify_jwt_token(token: str) -> Optional[str]:
-    """Verify JWT token and return username.
-    
-    Args:
-        token: JWT token string.
-    
-    Returns:
-        Username if token is valid, None otherwise.
-    """
-    try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        username = payload.get("sub")
-        return username
-    except jwt.ExpiredSignatureError:
-        logger.debug("JWT token expired")
-        return None
-    except jwt.InvalidTokenError:
-        logger.debug("Invalid JWT token")
-        return None
+    return secrets.token_hex(32)
 
 
 @router.post("/login")
@@ -98,8 +64,9 @@ async def login(request: Request, body: LoginRequest) -> Response:
         logger.warning(f"Failed login attempt for username: {body.username}")
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    # Generate JWT token (contains username and expiration)
-    token = create_jwt_token(body.username)
+    # Generate session token and store in database
+    session_token = create_session_token()
+    manager.create_session(body.username, session_token, expires_in_days=SESSION_EXPIRATION_DAYS)
 
     logger.info(f"User logged in: {body.username}")
     
@@ -110,9 +77,9 @@ async def login(request: Request, body: LoginRequest) -> Response:
     # Set cookie (httponly for security)
     response.set_cookie(
         key="session_token",
-        value=token,
+        value=session_token,
         httponly=True,
-        max_age=86400 * JWT_EXPIRATION_DAYS,
+        max_age=86400 * SESSION_EXPIRATION_DAYS,
         samesite="lax",
         path="/",
         secure=False  # Set to True if using HTTPS
@@ -131,12 +98,17 @@ async def logout(request: Request) -> JSONResponse:
     Returns:
         JSON with success status (cookie cleared in response).
     """
+    manager = request.app.state.auth_manager
     session_token = request.cookies.get("session_token")
     
     if session_token:
-        username = verify_jwt_token(session_token)
+        # Get username before deleting session
+        username = manager.get_session(session_token)
         if username:
             logger.info(f"User logged out: {username}")
+        
+        # Delete session from database
+        manager.delete_session(session_token)
 
     # Create response
     response = JSONResponse({"success": True, "message": "Logged out"})
@@ -161,17 +133,18 @@ async def get_current_user(request: Request) -> JSONResponse:
     Returns:
         JSON with username if logged in.
     """
+    manager = request.app.state.auth_manager
     session_token = request.cookies.get("session_token")
     
     if not session_token:
         raise HTTPException(status_code=401, detail="Not logged in")
     
-    # Verify JWT token
-    username = verify_jwt_token(session_token)
+    # Verify session in database
+    username = manager.get_session(session_token)
     if not username:
-        # Token invalid or expired - clear cookie
+        # Session invalid or expired - clear cookie
         response = JSONResponse(
-            {"detail": "Token expired or invalid"},
+            {"detail": "Session expired or invalid"},
             status_code=401
         )
         response.delete_cookie("session_token", path="/")
@@ -181,7 +154,7 @@ async def get_current_user(request: Request) -> JSONResponse:
 
 
 def verify_session(request: Request) -> str:
-    """Dependency to verify JWT token.
+    """Dependency to verify session token in database.
 
     Args:
         request: FastAPI request.
@@ -190,16 +163,17 @@ def verify_session(request: Request) -> str:
         Username of logged-in user.
 
     Raises:
-        HTTPException: 401 if token is invalid or expired.
+        HTTPException: 401 if session is invalid or expired.
     """
+    manager = request.app.state.auth_manager
     session_token = request.cookies.get("session_token")
     
     if not session_token:
         raise HTTPException(status_code=401, detail="Not logged in")
     
-    # Verify JWT token
-    username = verify_jwt_token(session_token)
+    # Verify session in database
+    username = manager.get_session(session_token)
     if not username:
-        raise HTTPException(status_code=401, detail="Token expired or invalid")
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
 
     return username
