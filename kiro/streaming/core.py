@@ -433,7 +433,9 @@ async def stream_with_first_token_retry(
                     logger.warning(f"Could not read error response body: {e}")
                 
                 try:
-                    await response.aclose()
+                    await asyncio.wait_for(response.aclose(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    logger.warning("Response cleanup timed out after 5 seconds")
                 except Exception:
                     pass
                 
@@ -461,7 +463,9 @@ async def stream_with_first_token_retry(
             # Close current response if open
             if response:
                 try:
-                    await response.aclose()
+                    await asyncio.wait_for(response.aclose(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    logger.warning("Response cleanup timed out after 5 seconds")
                 except Exception:
                     pass
             
@@ -476,7 +480,9 @@ async def stream_with_first_token_retry(
             logger.error("Unexpected error during streaming: {}", error_msg, exc_info=True)
             if response:
                 try:
-                    await response.aclose()
+                    await asyncio.wait_for(response.aclose(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    logger.warning("Response cleanup timed out after 5 seconds")
                 except Exception:
                     pass
             raise

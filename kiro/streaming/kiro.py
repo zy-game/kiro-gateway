@@ -580,7 +580,9 @@ async def stream_kiro_to_anthropic(
         raise
     finally:
         try:
-            await response.aclose()
+            await asyncio.wait_for(response.aclose(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning("Response cleanup timed out after 5 seconds")
         except Exception as close_error:
             logger.debug(f"Error closing response: {close_error}")
 
