@@ -503,8 +503,10 @@ class Database:
     def increment_usage(self, account_id: int, amount: float) -> None:
         """Atomically increment the usage field for an account.
         
-        This operation is atomic at the SQL level, preventing race conditions
-        when multiple requests update usage concurrently.
+        This operation uses proper transaction isolation to prevent concurrent
+        update race conditions. The UPDATE statement with arithmetic operation
+        (usage = usage + ?) is atomic at the SQL level, and wrapping it in an
+        explicit transaction ensures proper isolation even under high concurrency.
         
         Args:
             account_id: Account primary key.
@@ -512,12 +514,26 @@ class Database:
         
         Example:
             db.increment_usage(1, 10.5)
+        
+        Note:
+            This method can be called standalone (creates its own transaction)
+            or within an existing transaction() context manager.
         """
-        self.execute(
-            "UPDATE accounts SET usage = usage + ? WHERE id = ?",
-            (amount, account_id),
-            commit=True
-        )
+        # If already in a transaction, just execute the update
+        if self._in_transaction:
+            self.execute(
+                "UPDATE accounts SET usage = usage + ? WHERE id = ?",
+                (amount, account_id),
+                commit=False  # Transaction will handle commit
+            )
+        else:
+            # Create explicit transaction for atomic operation
+            with self.transaction():
+                self.execute(
+                    "UPDATE accounts SET usage = usage + ? WHERE id = ?",
+                    (amount, account_id),
+                    commit=False  # Transaction will handle commit
+                )
     
     def refresh_usage(self, account_id: int, new_usage: float) -> int:
         """Refresh (reset) the usage field for an account.
