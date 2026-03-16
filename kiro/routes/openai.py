@@ -313,7 +313,6 @@ async def chat_completions(
                                             if text:
                                                 output_content.append(text)
                                                 logger.debug(f"Anthropic: Collected {len(text)} chars")
-                                                output_content.append(text)
                         except:
                             pass
                         yield chunk
