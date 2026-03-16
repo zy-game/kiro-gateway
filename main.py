@@ -523,9 +523,9 @@ async def admin_ui(request: Request):
         # Not logged in, redirect to login page
         return FileResponse("static/login.html")
     
-    # Verify JWT token
-    from kiro.routes.auth import verify_jwt_token
-    username = verify_jwt_token(session_token)
+    # Verify session token in database
+    manager = request.app.state.auth_manager
+    username = manager.get_session(session_token)
     if not username:
         # Token invalid or expired, redirect to login page
         return FileResponse("static/login.html")
