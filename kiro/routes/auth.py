@@ -80,7 +80,7 @@ def verify_jwt_token(token: str) -> Optional[str]:
 
 
 @router.post("/login")
-async def login(request: Request, body: LoginRequest) -> JSONResponse:
+async def login(request: Request, body: LoginRequest) -> Response:
     """Admin login endpoint.
 
     Args:
@@ -88,7 +88,7 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
         body: Login credentials.
 
     Returns:
-        JSON with success status and JWT token (cookie set in response).
+        302 redirect to /admin with session cookie set.
     """
     manager = request.app.state.auth_manager
 
@@ -103,12 +103,9 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
 
     logger.info(f"User logged in: {body.username}")
     
-    # Create response with cookie
-    response = JSONResponse({
-        "success": True,
-        "message": "Login successful",
-        "token": token,
-    })
+    # Create redirect response to /admin
+    from fastapi.responses import RedirectResponse
+    response = RedirectResponse(url="/admin", status_code=302)
     
     # Set cookie (httponly for security)
     response.set_cookie(
