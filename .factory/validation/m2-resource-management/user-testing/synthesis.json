@@ -1,81 +1,62 @@
 {
   "milestone": "m2-resource-management",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "assertionsSummary": {
     "total": 9,
-    "passed": 6,
-    "failed": 1,
-    "blocked": 2
+    "passed": 9,
+    "failed": 0,
+    "blocked": 0
   },
   "passedAssertions": [
     "m2-a1",
     "m2-a2",
+    "m2-a3",
     "m2-a4",
     "m2-a5",
     "m2-a6",
-    "m2-a7"
+    "m2-a7",
+    "m2-a8",
+    "m2-a9"
   ],
-  "failedAssertions": [
-    {
-      "id": "m2-a3",
-      "reason": "Streaming responses close connections properly - Test failed due to missing authentication credentials. Pre-existing CLOSE_WAIT connections (5) detected at baseline."
-    }
-  ],
-  "blockedAssertions": [
-    {
-      "id": "m2-a8",
-      "blockedBy": "FastAPI server not running on localhost:8000 - cannot test connection leak behavior under concurrent load"
-    },
-    {
-      "id": "m2-a9",
-      "blockedBy": "FastAPI server not running on localhost:8000 - cannot measure server memory stability under load"
-    }
-  ],
-  "appliedUpdates": [
-    {
-      "target": "user-testing.md",
-      "description": "Added Flow Validator Guidance section for API Testing with isolation strategy, concurrency limits (max 3), and testing approach for m2-resource-management assertions",
-      "source": "setup"
-    }
-  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
   "detailedFindings": {
+    "round1Summary": {
+      "status": "6 passed, 1 failed, 2 blocked",
+      "issues": [
+        "m2-a3 failed due to missing authentication credentials",
+        "m2-a8 and m2-a9 blocked because server wasn't running"
+      ]
+    },
+    "round2Summary": {
+      "status": "all 3 previously failed/blocked assertions now pass",
+      "resolutions": [
+        "Started FastAPI server on localhost:8000 (PID 47096)",
+        "Flow validators retrieved valid API key from database",
+        "All streaming and concurrent load tests completed successfully"
+      ]
+    },
     "httpClientConfig": {
       "assertions": ["m2-a1", "m2-a2", "m2-a5"],
-      "status": "all passed",
+      "status": "all passed (verified in round 1)",
       "method": "code inspection",
-      "notes": "Verified through main.py source code inspection. Shared HTTP client properly configured with correct limits (max_connections=100, max_keepalive_connections=20, keepalive_expiry=30.0) and proper shutdown cleanup."
+      "notes": "Shared HTTP client properly configured with correct limits and proper shutdown cleanup"
     },
     "connectionManagement": {
       "assertions": ["m2-a3", "m2-a4", "m2-a6", "m2-a7"],
-      "status": "3 passed, 1 failed",
+      "status": "all passed",
       "method": "code inspection + runtime testing",
-      "notes": "m2-a4 validation contract wording was misleading - milestone requires REMOVING Connection: close header (not adding it), which is correctly implemented. m2-a3 failed due to missing authentication in test. m2-a6 and m2-a7 verified through source code inspection."
+      "notes": "m2-a3 now passes with proper authentication. Streaming connections close properly with 0 new CLOSE_WAIT connections. 5 pre-existing CLOSE_WAIT connections documented but unrelated to test."
     },
     "concurrentLoad": {
       "assertions": ["m2-a8", "m2-a9"],
-      "status": "both blocked",
-      "method": "attempted runtime testing",
-      "notes": "Server not running on localhost:8000. Test infrastructure (httpx, psutil, asyncio) is working correctly and ready to execute once server is available."
+      "status": "both passed",
+      "method": "runtime testing with httpx + psutil",
+      "notes": "m2-a8: 50 concurrent requests, 0 connection leaks. m2-a9: 100 requests, 1.72% memory growth (well below 10% threshold)."
     }
   },
-  "recommendations": [
-    {
-      "priority": "high",
-      "description": "Start FastAPI server on localhost:8000 before running user testing validation to enable runtime testing of m2-a8 and m2-a9"
-    },
-    {
-      "priority": "medium",
-      "description": "Fix m2-a3 test to include valid API key authentication for proper streaming connection testing"
-    },
-    {
-      "priority": "medium",
-      "description": "Update validation contract for m2-a4 to clarify that Connection: close header should be ABSENT (not present) per milestone requirements"
-    },
-    {
-      "priority": "low",
-      "description": "Investigate and clean up 5 pre-existing CLOSE_WAIT connections detected at baseline"
-    }
-  ],
-  "previousRound": null
+  "recommendations": [],
+  "previousRound": ".factory/validation/m2-resource-management/user-testing/synthesis-round1.json"
 }

@@ -1,0 +1,21 @@
+{
+  "featureId": "m2-f3-remove-connection-close",
+  "reviewedAt": "2026-03-16T14:30:00.000Z",
+  "commitId": "c0f86b59f25273bdd1adb60c37eb13153465a563",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Feature successfully removes the 'Connection: close' header workaround from streaming requests in http_client.py. The implementation is clean and correct - it simply removes the 2-line hack (comment + header assignment) that was added to prevent CLOSE_WAIT connection leaks. This workaround is no longer needed now that the shared HTTP client with proper connection pooling is in use (completed in m2-f1 and m2-f2). All 191 tests pass before and after the change, confirming no regressions.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The feature description referenced line 163, but the actual code was at line 228. This suggests the line numbers in the mission.md may have been based on an earlier version of the codebase. The worker correctly located the code by searching for the pattern rather than relying on the line number.",
+      "evidence": "Feature description says 'kiro/core/http_client.py line 163' but the actual removal was at line 228 in commit c0f86b59. Worker used grep to find 'Connection.*close' pattern to locate the correct line."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS - Feature m2-f3 successfully removes the Connection: close header workaround. The implementation is minimal and correct: removed 2 lines (comment explaining the workaround + the header assignment) from the streaming request path in http_client.py. This fulfills assertions m2-a3 (streaming responses close connections properly) and m2-a4 (connection header behavior) by relying on the shared HTTP client's proper connection management instead of forcing connections to close. All tests pass, no regressions detected. The worker followed TDD procedure correctly by running baseline tests before changes and regression tests after. One minor observation: the feature description had an outdated line number (163 vs actual 228), but the worker handled this well by searching for the pattern."
+}

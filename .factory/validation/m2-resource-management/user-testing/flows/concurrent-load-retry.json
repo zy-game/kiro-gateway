@@ -1,0 +1,118 @@
+{
+  "groupId": "concurrent-load-retry",
+  "testedAt": "2026-03-16T22:59:53.693890",
+  "isolation": {
+    "serverUrl": "http://localhost:8000",
+    "serverPid": 47096,
+    "apiKey": "[REDACTED]",
+    "testingTool": "httpx + psutil"
+  },
+  "toolsUsed": ["httpx", "psutil", "asyncio"],
+  "assertions": [
+    {
+      "id": "m2-a8",
+      "title": "No connection leaks under concurrent load",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Get baseline connection count for server process (PID 47096)",
+          "expected": "Baseline established",
+          "observed": "Baseline: 3 connections (2 ESTABLISHED, 1 LISTEN)"
+        },
+        {
+          "action": "Send 50 concurrent streaming requests to /v1/chat/completions",
+          "expected": "All requests complete successfully",
+          "observed": "50 requests completed in 10.11 seconds, all successful"
+        },
+        {
+          "action": "Wait 5 seconds for connections to close",
+          "expected": "Connections return to baseline",
+          "observed": "Final: 3 connections (2 ESTABLISHED, 1 LISTEN)"
+        },
+        {
+          "action": "Compare baseline and final connection counts",
+          "expected": "Connection growth <= 5, no CLOSE_WAIT growth",
+          "observed": "Connection growth: 0, CLOSE_WAIT growth: 0"
+        }
+      ],
+      "evidence": {
+        "testScript": "m2-resource-management/concurrent-load-retry/test_concurrent_load.py",
+        "testResults": "m2-resource-management/concurrent-load-retry/test_results.json",
+        "testSummary": "m2-resource-management/concurrent-load-retry/test_summary.md",
+        "metrics": {
+          "baseline_connections": 3,
+          "final_connections": 3,
+          "connection_growth": 0,
+          "close_wait_baseline": 0,
+          "close_wait_final": 0,
+          "requests_sent": 50,
+          "successes": 50,
+          "failures": 0,
+          "exceptions": 0,
+          "elapsed_seconds": 10.11
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "m2-a9",
+      "title": "Memory usage stable under load",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Get baseline memory usage for server process (PID 47096)",
+          "expected": "Baseline established",
+          "observed": "Baseline RSS: 103.03 MB, VMS: 89.15 MB"
+        },
+        {
+          "action": "Send 100 streaming requests to /v1/chat/completions",
+          "expected": "All requests complete successfully",
+          "observed": "100 requests completed in 10.66 seconds, all successful"
+        },
+        {
+          "action": "Wait 5 seconds for cleanup and garbage collection",
+          "expected": "Memory stabilizes",
+          "observed": "Final RSS: 104.80 MB, VMS: 91.83 MB"
+        },
+        {
+          "action": "Calculate memory growth percentage",
+          "expected": "Memory growth < 10%",
+          "observed": "Memory growth: 1.77 MB (1.72%)"
+        }
+      ],
+      "evidence": {
+        "testScript": "m2-resource-management/concurrent-load-retry/test_concurrent_load.py",
+        "testResults": "m2-resource-management/concurrent-load-retry/test_results.json",
+        "testSummary": "m2-resource-management/concurrent-load-retry/test_summary.md",
+        "metrics": {
+          "baseline_memory_mb": 103.03,
+          "final_memory_mb": 104.80,
+          "memory_growth_mb": 1.77,
+          "memory_growth_percent": 1.72,
+          "requests_sent": 100,
+          "successes": 100,
+          "failures": 0,
+          "exceptions": 0,
+          "elapsed_seconds": 10.66
+        }
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Python command 'python' not available on Windows, had to use 'py' launcher instead",
+      "resolved": true,
+      "resolution": "Used 'py' command which is the standard Python launcher on Windows",
+      "affectedAssertions": []
+    },
+    {
+      "description": "psutil.Process.connections() shows deprecation warning, recommends net_connections() instead",
+      "resolved": false,
+      "resolution": "Warning does not affect functionality, but should be updated in future",
+      "affectedAssertions": ["m2-a8"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 2 assertions: both passed. m2-a8 shows zero connection leaks under 50 concurrent streaming requests. m2-a9 shows stable memory usage (1.72% growth) under 100 requests, well below the 10% threshold. Server demonstrates proper resource management and cleanup."
+}
