@@ -119,3 +119,49 @@ result = db.get_account(account_id=1)
 assert result is not None
 assert result['id'] == 1
 ```
+
+---
+
+## Flow Validator Guidance: Parser Testing
+
+### Isolation Strategy
+Parser testing for m4-tool-limits focuses on the **kiro/utils_pkg/parsers.py** module. Each flow validator should test the parser in isolation without requiring a running server or database.
+
+### Testing Approach
+1. **Import parser module**: Verify the parser can be imported
+2. **Test with various argument sizes**: Test with arguments from 1KB to 1MB
+3. **Verify truncation detection**: Ensure truncation is properly detected and reported
+4. **Test error messages**: Verify error messages are clear and actionable
+5. **Test TRUNCATION_RECOVERY**: Verify synthetic error generation when enabled
+
+### Shared State to Avoid
+- Do NOT modify the parser source code during testing
+- Do NOT use production API keys or credentials
+- Do NOT start the FastAPI server (not needed for parser testing)
+- Each validator should test independently without shared state
+
+### Resource Constraints
+- Max memory per validator: ~200 MB (for large argument buffers)
+- Max concurrent validators: 3 (parser testing is CPU and memory intensive)
+- Test timeout: 120 seconds per assertion group (large arguments take time)
+
+### Evidence Collection
+- Save test output showing argument sizes tested
+- Include any error messages or truncation warnings
+- Document parser buffer size configuration
+- Save performance metrics (time, memory usage)
+
+### Example Test Pattern
+```python
+import sys
+sys.path.insert(0, 'E:/kiro-gateway')
+
+from kiro.utils_pkg.parsers import StreamingAnthropicParser
+
+# Test with large argument
+large_arg = "x" * (100 * 1024)  # 100KB
+parser = StreamingAnthropicParser()
+
+# Simulate streaming chunks
+# ... test parser behavior ...
+```
