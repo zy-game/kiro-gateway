@@ -442,6 +442,22 @@ FAKE_REASONING_INITIAL_BUFFER_SIZE: int = int(os.getenv("FAKE_REASONING_INITIAL_
 
 
 # ==================================================================================================
+# Parser Buffer Settings
+# ==================================================================================================
+
+# Maximum buffer size for tool argument parsing (in bytes).
+# This controls how large tool call arguments can be before being rejected.
+# The Kiro API may truncate large arguments, but we want to handle them gracefully.
+# 
+# Default: 1MB (1048576 bytes) - sufficient for most use cases
+# Set to 0 to disable limit (not recommended - may cause memory issues)
+#
+# Note: This is the internal buffer size. The actual limit may be lower due to
+# Kiro API restrictions. When truncation is detected, the gateway will notify
+# the model if TRUNCATION_RECOVERY is enabled.
+TOOL_ARGUMENT_BUFFER_SIZE: int = int(os.getenv("TOOL_ARGUMENT_BUFFER_SIZE", "1048576"))  # 1MB
+
+# ==================================================================================================
 # Accounts Database Settings
 # ==================================================================================================
 

@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
+from kiro.core.config import TOOL_ARGUMENT_BUFFER_SIZE
 from kiro.utils_pkg.helpers import generate_tool_call_id
 
 
@@ -225,6 +226,7 @@ class AwsEventStreamParser:
     
     Attributes:
         buffer: Buffer for accumulating data
+        buffer_size_limit: Maximum buffer size in bytes (configurable via TOOL_ARGUMENT_BUFFER_SIZE)
         last_content: Last processed content (for deduplication)
         current_tool_call: Current incomplete tool call
         tool_calls: List of completed tool calls
@@ -248,9 +250,16 @@ class AwsEventStreamParser:
         ('{"contextUsagePercentage":', 'context_usage'),
     ]
     
-    def __init__(self):
-        """Initializes the parser."""
+    def __init__(self, buffer_size_limit: Optional[int] = None):
+        """
+        Initializes the parser.
+        
+        Args:
+            buffer_size_limit: Maximum buffer size in bytes. If None, uses TOOL_ARGUMENT_BUFFER_SIZE
+                              from config. Set to 0 to disable limit (not recommended).
+        """
         self.buffer = ""
+        self.buffer_size_limit = buffer_size_limit if buffer_size_limit is not None else TOOL_ARGUMENT_BUFFER_SIZE
         self.last_content: Optional[str] = None  # For deduplicating repeating content
         self.current_tool_call: Optional[Dict[str, Any]] = None
         self.tool_calls: List[Dict[str, Any]] = []
@@ -266,7 +275,20 @@ class AwsEventStreamParser:
             List of events in {"type": str, "data": Any} format
         """
         try:
-            self.buffer += chunk.decode('utf-8', errors='ignore')
+            decoded_chunk = chunk.decode('utf-8', errors='ignore')
+            
+            # Check buffer size limit (if enabled)
+            if self.buffer_size_limit > 0:
+                new_size = len(self.buffer.encode('utf-8')) + len(decoded_chunk.encode('utf-8'))
+                if new_size > self.buffer_size_limit:
+                    logger.warning(
+                        f"Parser buffer size limit exceeded: {new_size} bytes > {self.buffer_size_limit} bytes. "
+                        f"Increase TOOL_ARGUMENT_BUFFER_SIZE in .env if needed."
+                    )
+                    # Still add the chunk but log the warning
+                    # This allows graceful degradation rather than hard failure
+            
+            self.buffer += decoded_chunk
         except Exception:
             return []
         
