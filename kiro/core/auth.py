@@ -10,7 +10,6 @@ import asyncio
 import hashlib
 import json
 import secrets
-import sqlite3
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -21,6 +20,8 @@ from urllib.parse import urlencode
 
 import httpx
 from loguru import logger
+
+from kiro.core.database import Database
 
 
 DEFAULT_REGION = "us-east-1"
@@ -322,84 +323,63 @@ class AccountManager:
 
     def __init__(self, db_path: str = "accounts.db") -> None:
         self._db_path = str(Path(db_path).expanduser())
+        self._db = Database(self._db_path)
         self._lock = asyncio.Lock()
         self._cursor_index: int = 0
         self._token_cache: Dict[int, Tuple[str, float]] = {}  # account_id -> (token, expiry_timestamp)
         self._init_db()
 
-    # ------------------------------------------------------------------
-    # DB helpers
-    # ------------------------------------------------------------------
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._db_path, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        return conn
-
     def _init_db(self) -> None:
         """Create the accounts, api_keys, admin_users, and request_logs tables if they do not exist."""
         try:
-            with self._connect() as conn:
-                conn.execute(self._CREATE_TABLE_SQL)
-                conn.execute(self._CREATE_API_KEYS_TABLE_SQL)
-                conn.execute(self._CREATE_ADMIN_USERS_TABLE_SQL)
-                conn.execute(self._CREATE_REQUEST_LOGS_TABLE_SQL)
-                conn.execute(self._CREATE_REQUEST_LOGS_INDEX_SQL)
-                conn.execute(self._CREATE_SESSIONS_TABLE_SQL)
-                conn.execute(self._CREATE_SESSIONS_INDEX_SQL)
-                conn.execute(self._CREATE_MODELS_TABLE_SQL)
-                conn.execute(self._CREATE_MODELS_INDEX_SQL)
+            with self._db as db:
+                db.execute(self._CREATE_TABLE_SQL, commit=True)
+                db.execute(self._CREATE_API_KEYS_TABLE_SQL, commit=True)
+                db.execute(self._CREATE_ADMIN_USERS_TABLE_SQL, commit=True)
+                db.execute(self._CREATE_REQUEST_LOGS_TABLE_SQL, commit=True)
+                db.execute(self._CREATE_REQUEST_LOGS_INDEX_SQL, commit=True)
+                db.execute(self._CREATE_SESSIONS_TABLE_SQL, commit=True)
+                db.execute(self._CREATE_SESSIONS_INDEX_SQL, commit=True)
+                db.execute(self._CREATE_MODELS_TABLE_SQL, commit=True)
+                db.execute(self._CREATE_MODELS_INDEX_SQL, commit=True)
                 
                 # Add new fields to accounts table if they don't exist
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA table_info(accounts)")
+                cursor = db.execute("PRAGMA table_info(accounts)", commit=False)
                 columns = [col[1] for col in cursor.fetchall()]
                 
                 if "email" not in columns:
-                    conn.execute("ALTER TABLE accounts ADD COLUMN email TEXT")
+                    db.execute("ALTER TABLE accounts ADD COLUMN email TEXT", commit=True)
                     logger.info("Added 'email' column to accounts table")
                 
                 if "expires_at" not in columns:
-                    conn.execute("ALTER TABLE accounts ADD COLUMN expires_at TEXT")
+                    db.execute("ALTER TABLE accounts ADD COLUMN expires_at TEXT", commit=True)
                     logger.info("Added 'expires_at' column to accounts table")
                 
                 if "next_reset_at" not in columns:
-                    conn.execute("ALTER TABLE accounts ADD COLUMN next_reset_at INTEGER")
+                    db.execute("ALTER TABLE accounts ADD COLUMN next_reset_at INTEGER", commit=True)
                     logger.info("Added 'next_reset_at' column to accounts table")
                 
                 
                 # Add duration_ms field to request_logs table if it doesn't exist
-                cursor.execute("PRAGMA table_info(request_logs)")
+                cursor = db.execute("PRAGMA table_info(request_logs)", commit=False)
                 log_columns = [col[1] for col in cursor.fetchall()]
                 
                 if "duration_ms" not in log_columns:
-                    conn.execute("ALTER TABLE request_logs ADD COLUMN duration_ms INTEGER")
+                    db.execute("ALTER TABLE request_logs ADD COLUMN duration_ms INTEGER", commit=True)
                     logger.info("Added 'duration_ms' column to request_logs table")
                 
-                conn.commit()
             logger.info(f"AccountManager initialized with database: {self._db_path}")
-        except sqlite3.Error as e:
+        except Exception as e:
             logger.error(f"Failed to initialize accounts database: {e}")
             raise
 
-    def _row_to_account(self, row: sqlite3.Row) -> Account:
+    def _row_to_account(self, row: Dict[str, Any]) -> Account:
         config = json.loads(row["config"]) if isinstance(row["config"], str) else row["config"]
         
         # Get optional fields, handling cases where they might not exist
-        try:
-            email = row["email"]
-        except (KeyError, IndexError):
-            email = None
-        
-        try:
-            expires_at = row["expires_at"]
-        except (KeyError, IndexError):
-            expires_at = None
-        
-        try:
-            next_reset_at = row["next_reset_at"]
-        except (KeyError, IndexError):
-            next_reset_at = None
+        email = row.get("email")
+        expires_at = row.get("expires_at")
+        next_reset_at = row.get("next_reset_at")
         
         return Account(
             id=row["id"],
@@ -423,11 +403,10 @@ class AccountManager:
         Returns:
             List of Account objects.
         """
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM accounts ORDER BY priority DESC"
-            ).fetchall()
-        return [self._row_to_account(r) for r in rows]
+        rows = self._db.fetch_all(
+            "SELECT * FROM accounts ORDER BY priority DESC"
+        )
+        return [self._row_to_account(dict(r)) for r in rows]
 
     def get_account(self, account_id: int) -> Account:
         """Fetch a single account by ID.
@@ -441,13 +420,12 @@ class AccountManager:
         Raises:
             KeyError: If account not found.
         """
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM accounts WHERE id = ?", (account_id,)
-            ).fetchone()
+        row = self._db.fetch_one(
+            "SELECT * FROM accounts WHERE id = ?", (account_id,)
+        )
         if row is None:
             raise KeyError(f"Account {account_id} not found")
-        return self._row_to_account(row)
+        return self._row_to_account(dict(row))
 
     async def get_account_by_type(self, account_type: str) -> Optional[Account]:
         """
@@ -465,15 +443,14 @@ class AccountManager:
             Account object or None if no available account
         """
         async with self._lock:
-            with self._connect() as conn:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM accounts 
-                    WHERE type = ?
-                    ORDER BY priority DESC, usage ASC
-                    """,
-                    (account_type,)
-                ).fetchall()
+            rows = self._db.fetch_all(
+                """
+                SELECT * FROM accounts 
+                WHERE type = ?
+                ORDER BY priority DESC, usage ASC
+                """,
+                (account_type,)
+            )
             
             if not rows:
                 logger.warning(f"No accounts found for type '{account_type}'")
@@ -483,7 +460,7 @@ class AccountManager:
             
             # Find first account that hasn't exceeded limit
             for idx, row in enumerate(rows):
-                account = self._row_to_account(row)
+                account = self._row_to_account(dict(row))
                 threshold = account.limit - 1
                 is_unlimited = account.limit == 0
                 is_available = account.usage < threshold
@@ -525,13 +502,16 @@ class AccountManager:
         """
         config = config or {}
         config_json = json.dumps(config, ensure_ascii=False)
-        with self._connect() as conn:
-            cursor = conn.execute(
-                "INSERT INTO accounts (type, priority, config, limit_, usage) VALUES (?, ?, ?, ?, ?)",
-                (type, priority, config_json, limit, 0.0),
-            )
-            conn.commit()
-            account_id = cursor.lastrowid
+        account_id = self._db.insert(
+            "accounts",
+            {
+                "type": type,
+                "priority": priority,
+                "config": config_json,
+                "limit_": limit,
+                "usage": 0.0
+            }
+        )
         logger.info(f"Created account id={account_id} type={type} priority={priority}")
         return self.get_account(account_id)
 
@@ -561,24 +541,18 @@ class AccountManager:
             "limit": "limit_",
             "usage": "usage",
         }
-        sets = []
-        values = []
+        data = {}
         for key, col in field_map.items():
             if key in kwargs:
                 val = kwargs[key]
                 if key == "config":
                     val = json.dumps(val, ensure_ascii=False)
-                sets.append(f"{col} = ?")
-                values.append(val)
+                data[col] = val
 
-        if not sets:
+        if not data:
             raise ValueError("No valid fields provided for update")
 
-        values.append(account_id)
-        sql = f"UPDATE accounts SET {', '.join(sets)} WHERE id = ?"
-        with self._connect() as conn:
-            conn.execute(sql, values)
-            conn.commit()
+        self._db.update("accounts", data, "id = ?", (account_id,))
         logger.info(f"Updated account id={account_id} fields={list(kwargs.keys())}")
         return self.get_account(account_id)
 
@@ -592,9 +566,7 @@ class AccountManager:
             KeyError: If account not found.
         """
         self.get_account(account_id)  # raises KeyError if missing
-        with self._connect() as conn:
-            conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
-            conn.commit()
+        self._db.delete("accounts", "id = ?", (account_id,))
         logger.info(f"Deleted account id={account_id}")
 
     def update_usage(self, account_id: int, usage: float) -> None:
@@ -604,11 +576,7 @@ class AccountManager:
             account_id: Account primary key.
             usage: New usage value.
         """
-        with self._connect() as conn:
-            conn.execute(
-                "UPDATE accounts SET usage = ? WHERE id = ?", (usage, account_id)
-            )
-            conn.commit()
+        self._db.update("accounts", {"usage": usage}, "id = ?", (account_id,))
 
     def increment_usage(self, account_id: int, delta: float) -> None:
         """Atomically increment the usage field for an account.
@@ -617,11 +585,11 @@ class AccountManager:
             account_id: Account primary key.
             delta: Amount to add to current usage.
         """
-        with self._connect() as conn:
-            conn.execute(
-                "UPDATE accounts SET usage = usage + ? WHERE id = ?", (delta, account_id)
-            )
-            conn.commit()
+        self._db.execute(
+            "UPDATE accounts SET usage = usage + ? WHERE id = ?",
+            (delta, account_id),
+            commit=True
+        )
 
     def _persist_config(self, account_id: int, config: dict) -> None:
         """Write updated config JSON back to the database.
@@ -630,12 +598,12 @@ class AccountManager:
             account_id: Account primary key.
             config: Updated credentials dict.
         """
-        with self._connect() as conn:
-            conn.execute(
-                "UPDATE accounts SET config = ? WHERE id = ?",
-                (json.dumps(config, ensure_ascii=False), account_id),
-            )
-            conn.commit()
+        self._db.update(
+            "accounts",
+            {"config": json.dumps(config, ensure_ascii=False)},
+            "id = ?",
+            (account_id,)
+        )
 
     # ------------------------------------------------------------------
     # Token management
@@ -873,28 +841,17 @@ class AccountManager:
         expires_at = config.get("expiresAt")
         
         # Update additional fields in database
-        with self._connect() as conn:
-            updates = []
-            params = []
-            
-            if email:
-                updates.append("email = ?")
-                params.append(email)
-            
-            if expires_at:
-                updates.append("expires_at = ?")
-                params.append(expires_at)
-            
-            if next_reset_at:
-                updates.append("next_reset_at = ?")
-                params.append(int(next_reset_at))
-            
-            if updates:
-                params.append(account.id)
-                sql = f"UPDATE accounts SET {', '.join(updates)} WHERE id = ?"
-                conn.execute(sql, params)
-                conn.commit()
-                logger.debug(f"Account {account.id}: updated email={email}, expires_at={expires_at}, next_reset_at={next_reset_at}")
+        updates = {}
+        if email:
+            updates["email"] = email
+        if expires_at:
+            updates["expires_at"] = expires_at
+        if next_reset_at:
+            updates["next_reset_at"] = int(next_reset_at)
+        
+        if updates:
+            self._db.update("accounts", updates, "id = ?", (account.id,))
+            logger.debug(f"Account {account.id}: updated email={email}, expires_at={expires_at}, next_reset_at={next_reset_at}")
 
         logger.info(f"Account {account.id}: usage refreshed — used={used}, limit={limit}")
         return float(used), float(limit)
@@ -1028,13 +985,14 @@ class AccountManager:
         key = f"sk-{secrets.token_urlsafe(32)}"
         created_at = datetime.now(timezone.utc).isoformat()
 
-        with self._connect() as conn:
-            cursor = conn.execute(
-                "INSERT INTO api_keys (key, name, created_at) VALUES (?, ?, ?)",
-                (key, name, created_at),
-            )
-            conn.commit()
-            key_id = cursor.lastrowid
+        key_id = self._db.insert(
+            "api_keys",
+            {
+                "key": key,
+                "name": name,
+                "created_at": created_at
+            }
+        )
 
         logger.info(f"Generated API key id={key_id} name={name}")
         return ApiKey(id=key_id, key=key, name=name, created_at=created_at)
@@ -1045,10 +1003,9 @@ class AccountManager:
         Returns:
             List of ApiKey objects.
         """
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT id, key, name, created_at FROM api_keys ORDER BY id DESC"
-            ).fetchall()
+        rows = self._db.fetch_all(
+            "SELECT id, key, name, created_at FROM api_keys ORDER BY id DESC"
+        )
         return [
             ApiKey(id=r["id"], key=r["key"], name=r["name"], created_at=r["created_at"])
             for r in rows
@@ -1066,10 +1023,9 @@ class AccountManager:
         Raises:
             KeyError: If key not found.
         """
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT id, key, name, created_at FROM api_keys WHERE id = ?", (key_id,)
-            ).fetchone()
+        row = self._db.fetch_one(
+            "SELECT id, key, name, created_at FROM api_keys WHERE id = ?", (key_id,)
+        )
         if row is None:
             raise KeyError(f"API key {key_id} not found")
         return ApiKey(id=row["id"], key=row["key"], name=row["name"], created_at=row["created_at"])
@@ -1084,9 +1040,7 @@ class AccountManager:
             KeyError: If key not found.
         """
         self.get_api_key(key_id)  # raises KeyError if missing
-        with self._connect() as conn:
-            conn.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
-            conn.commit()
+        self._db.delete("api_keys", "id = ?", (key_id,))
         logger.info(f"Deleted API key id={key_id}")
 
     def verify_api_key(self, key: str) -> bool:
@@ -1098,10 +1052,9 @@ class AccountManager:
         Returns:
             True if key exists in database, False otherwise.
         """
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM api_keys WHERE key = ?", (key,)
-            ).fetchone()
+        row = self._db.fetch_one(
+            "SELECT 1 FROM api_keys WHERE key = ?", (key,)
+        )
         return row is not None
 
     
@@ -1114,10 +1067,9 @@ class AccountManager:
         Returns:
             ApiKey object if found, None otherwise.
         """
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM api_keys WHERE key = ?", (key,)
-            ).fetchone()
+        row = self._db.fetch_one(
+            "SELECT * FROM api_keys WHERE key = ?", (key,)
+        )
         
         if row:
             return ApiKey(
@@ -1161,15 +1113,18 @@ class AccountManager:
         created_at = datetime.now(timezone.utc).isoformat()
 
         try:
-            with self._connect() as conn:
-                cursor = conn.execute(
-                    "INSERT INTO admin_users (username, password_hash, created_at) VALUES (?, ?, ?)",
-                    (username, password_hash, created_at),
-                )
-                conn.commit()
-                user_id = cursor.lastrowid
-        except sqlite3.IntegrityError:
-            raise ValueError(f"Username '{username}' already exists")
+            user_id = self._db.insert(
+                "admin_users",
+                {
+                    "username": username,
+                    "password_hash": password_hash,
+                    "created_at": created_at
+                }
+            )
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e):
+                raise ValueError(f"Username '{username}' already exists")
+            raise
 
         logger.info(f"Created admin user id={user_id} username={username}")
         return AdminUser(id=user_id, username=username, password_hash=password_hash, created_at=created_at)
@@ -1186,11 +1141,10 @@ class AccountManager:
         """
         password_hash = self._hash_password(password)
 
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT id, username, password_hash, created_at FROM admin_users WHERE username = ? AND password_hash = ?",
-                (username, password_hash),
-            ).fetchone()
+        row = self._db.fetch_one(
+            "SELECT id, username, password_hash, created_at FROM admin_users WHERE username = ? AND password_hash = ?",
+            (username, password_hash),
+        )
 
         if row is None:
             return None
@@ -1208,10 +1162,9 @@ class AccountManager:
         Returns:
             List of AdminUser objects.
         """
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT id, username, password_hash, created_at FROM admin_users ORDER BY id"
-            ).fetchall()
+        rows = self._db.fetch_all(
+            "SELECT id, username, password_hash, created_at FROM admin_users ORDER BY id"
+        )
         return [
             AdminUser(id=r["id"], username=r["username"], password_hash=r["password_hash"], created_at=r["created_at"])
             for r in rows
@@ -1226,11 +1179,9 @@ class AccountManager:
         Raises:
             KeyError: If user not found.
         """
-        with self._connect() as conn:
-            cursor = conn.execute("DELETE FROM admin_users WHERE id = ?", (user_id,))
-            conn.commit()
-            if cursor.rowcount == 0:
-                raise KeyError(f"Admin user {user_id} not found")
+        rowcount = self._db.delete("admin_users", "id = ?", (user_id,))
+        if rowcount == 0:
+            raise KeyError(f"Admin user {user_id} not found")
         logger.info(f"Deleted admin user id={user_id}")
 
 
@@ -1265,31 +1216,33 @@ class AccountManager:
             ID of the inserted log entry.
         """
         created_at = datetime.utcnow().isoformat() + "Z"
-        with self._connect() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO request_logs 
-                (api_key_id, account_id, model, input_tokens, output_tokens, status, channel, created_at, duration_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (api_key_id, account_id, model, input_tokens, output_tokens, status, channel, created_at, duration_ms)
-            )
-            conn.commit()
-            log_id = cursor.lastrowid
+        log_id = self._db.insert(
+            "request_logs",
+            {
+                "api_key_id": api_key_id,
+                "account_id": account_id,
+                "model": model,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "status": status,
+                "channel": channel,
+                "created_at": created_at,
+                "duration_ms": duration_ms
+            }
+        )
         
         # Keep only the last 10000 records
-        with self._connect() as conn:
-            conn.execute(
-                """
-                DELETE FROM request_logs 
-                WHERE id NOT IN (
-                    SELECT id FROM request_logs 
-                    ORDER BY created_at DESC 
-                    LIMIT 10000
-                )
-                """
+        self._db.execute(
+            """
+            DELETE FROM request_logs 
+            WHERE id NOT IN (
+                SELECT id FROM request_logs 
+                ORDER BY created_at DESC 
+                LIMIT 10000
             )
-            conn.commit()
+            """,
+            commit=True
+        )
         
         return log_id
 
@@ -1325,25 +1278,25 @@ class AccountManager:
         
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
         
-        with self._connect() as conn:
-            # Get total count
-            count_query = f"SELECT COUNT(*) as total FROM request_logs rl WHERE {where_sql}"
-            total = conn.execute(count_query, params).fetchone()["total"]
-            
-            # Get logs with account and API key names
-            query = f"""
-                SELECT 
-                    rl.*,
-                    a.type as account_type,
-                    ak.name as api_key_name
-                FROM request_logs rl
-                LEFT JOIN accounts a ON rl.account_id = a.id
-                LEFT JOIN api_keys ak ON rl.api_key_id = ak.id
-                WHERE {where_sql}
-                ORDER BY rl.created_at DESC 
-                LIMIT ? OFFSET ?
-            """
-            rows = conn.execute(query, params + [limit, offset]).fetchall()
+        # Get total count
+        count_query = f"SELECT COUNT(*) as total FROM request_logs rl WHERE {where_sql}"
+        total_row = self._db.fetch_one(count_query, tuple(params) if params else None)
+        total = total_row[0] if total_row else 0
+        
+        # Get logs with account and API key names
+        query = f"""
+            SELECT 
+                rl.*,
+                a.type as account_type,
+                ak.name as api_key_name
+            FROM request_logs rl
+            LEFT JOIN accounts a ON rl.account_id = a.id
+            LEFT JOIN api_keys ak ON rl.api_key_id = ak.id
+            WHERE {where_sql}
+            ORDER BY rl.created_at DESC 
+            LIMIT ? OFFSET ?
+        """
+        rows = self._db.fetch_all(query, tuple(params + [limit, offset]))
         
         logs = [
             {
@@ -1376,21 +1329,20 @@ class AccountManager:
         """
         cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat() + "Z"
         
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT 
-                    strftime('%Y-%m-%d %H:00:00', created_at) as hour,
-                    COUNT(*) as requests,
-                    SUM(input_tokens) as input_tokens,
-                    SUM(output_tokens) as output_tokens
-                FROM request_logs
-                WHERE created_at >= ?
-                GROUP BY hour
-                ORDER BY hour ASC
-                """,
-                (cutoff,)
-            ).fetchall()
+        rows = self._db.fetch_all(
+            """
+            SELECT 
+                strftime('%Y-%m-%d %H:00:00', created_at) as hour,
+                COUNT(*) as requests,
+                SUM(input_tokens) as input_tokens,
+                SUM(output_tokens) as output_tokens
+            FROM request_logs
+            WHERE created_at >= ?
+            GROUP BY hour
+            ORDER BY hour ASC
+            """,
+            (cutoff,)
+        )
         
         return [
             {
@@ -1413,21 +1365,20 @@ class AccountManager:
         """
         cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
         
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT 
-                    strftime('%Y-%m-%d', created_at) as day,
-                    COUNT(*) as requests,
-                    SUM(input_tokens) as input_tokens,
-                    SUM(output_tokens) as output_tokens
-                FROM request_logs
-                WHERE created_at >= ?
-                GROUP BY day
-                ORDER BY day ASC
-                """,
-                (cutoff,)
-            ).fetchall()
+        rows = self._db.fetch_all(
+            """
+            SELECT 
+                strftime('%Y-%m-%d', created_at) as day,
+                COUNT(*) as requests,
+                SUM(input_tokens) as input_tokens,
+                SUM(output_tokens) as output_tokens
+            FROM request_logs
+            WHERE created_at >= ?
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (cutoff,)
+        )
         
         return [
             {
@@ -1454,12 +1405,15 @@ class AccountManager:
         created_at = datetime.utcnow().isoformat() + "Z"
         expires_at = (datetime.utcnow() + timedelta(days=expires_in_days)).isoformat() + "Z"
         
-        with self._connect() as conn:
-            conn.execute(
-                "INSERT INTO sessions (session_token, username, created_at, expires_at) VALUES (?, ?, ?, ?)",
-                (session_token, username, created_at, expires_at)
-            )
-            conn.commit()
+        self._db.insert(
+            "sessions",
+            {
+                "session_token": session_token,
+                "username": username,
+                "created_at": created_at,
+                "expires_at": expires_at
+            }
+        )
         
         logger.debug(f"Created session for user: {username}")
 
@@ -1474,11 +1428,10 @@ class AccountManager:
         """
         now = datetime.utcnow().isoformat() + "Z"
         
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT username FROM sessions WHERE session_token = ? AND expires_at > ?",
-                (session_token, now)
-            ).fetchone()
+        row = self._db.fetch_one(
+            "SELECT username FROM sessions WHERE session_token = ? AND expires_at > ?",
+            (session_token, now)
+        )
         
         if row:
             return row["username"]
@@ -1490,12 +1443,7 @@ class AccountManager:
         Args:
             session_token: Session token to delete.
         """
-        with self._connect() as conn:
-            conn.execute(
-                "DELETE FROM sessions WHERE session_token = ?",
-                (session_token,)
-            )
-            conn.commit()
+        self._db.delete("sessions", "session_token = ?", (session_token,))
         
         logger.debug(f"Deleted session: {session_token[:8]}...")
 
@@ -1507,13 +1455,7 @@ class AccountManager:
         """
         now = datetime.utcnow().isoformat() + "Z"
         
-        with self._connect() as conn:
-            cursor = conn.execute(
-                "DELETE FROM sessions WHERE expires_at <= ?",
-                (now,)
-            )
-            conn.commit()
-            deleted = cursor.rowcount
+        deleted = self._db.delete("sessions", "expires_at <= ?", (now,))
         
         if deleted > 0:
             logger.info(f"Cleaned up {deleted} expired sessions")
@@ -1538,20 +1480,19 @@ class AccountManager:
         Returns:
             List of model dicts with all fields.
         """
-        with self._connect() as conn:
-            query = "SELECT * FROM models WHERE 1=1"
-            params = []
-            
-            if provider_type:
-                query += " AND provider_type = ?"
-                params.append(provider_type)
-            
-            if enabled_only:
-                query += " AND enabled = 1"
-            
-            query += " ORDER BY provider_type, priority DESC, model_id"
-            
-            rows = conn.execute(query, params).fetchall()
+        query = "SELECT * FROM models WHERE 1=1"
+        params = []
+        
+        if provider_type:
+            query += " AND provider_type = ?"
+            params.append(provider_type)
+        
+        if enabled_only:
+            query += " AND enabled = 1"
+        
+        query += " ORDER BY provider_type, priority DESC, model_id"
+        
+        rows = self._db.fetch_all(query, tuple(params) if params else None)
         
         return [
             {
@@ -1579,10 +1520,9 @@ class AccountManager:
         Raises:
             KeyError: If model not found.
         """
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM models WHERE id = ?", (model_id,)
-            ).fetchone()
+        row = self._db.fetch_one(
+            "SELECT * FROM models WHERE id = ?", (model_id,)
+        )
         
         if row is None:
             raise KeyError(f"Model {model_id} not found")
@@ -1624,21 +1564,24 @@ class AccountManager:
         now = datetime.now(timezone.utc).isoformat()
         
         try:
-            with self._connect() as conn:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO models 
-                    (provider_type, model_id, display_name, enabled, priority, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (provider_type, model_id, display_name, int(enabled), priority, now, now),
-                )
-                conn.commit()
-                db_id = cursor.lastrowid
-        except sqlite3.IntegrityError:
-            raise ValueError(
-                f"Model '{model_id}' already exists for provider '{provider_type}'"
+            db_id = self._db.insert(
+                "models",
+                {
+                    "provider_type": provider_type,
+                    "model_id": model_id,
+                    "display_name": display_name,
+                    "enabled": int(enabled),
+                    "priority": priority,
+                    "created_at": now,
+                    "updated_at": now
+                }
             )
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e):
+                raise ValueError(
+                    f"Model '{model_id}' already exists for provider '{provider_type}'"
+                )
+            raise
         
         logger.info(f"Created model: {provider_type}/{model_id} (id={db_id})")
         return self.get_model(db_id)
@@ -1668,30 +1611,21 @@ class AccountManager:
             "priority": "priority",
         }
         
-        sets = []
-        values = []
-        
+        data = {}
         for key, col in allowed_fields.items():
             if key in kwargs:
                 val = kwargs[key]
                 if key == "enabled":
                     val = int(bool(val))
-                sets.append(f"{col} = ?")
-                values.append(val)
+                data[col] = val
         
-        if not sets:
+        if not data:
             raise ValueError("No valid fields provided for update")
         
         # Always update updated_at
-        sets.append("updated_at = ?")
-        values.append(datetime.now(timezone.utc).isoformat())
+        data["updated_at"] = datetime.now(timezone.utc).isoformat()
         
-        values.append(model_id)
-        sql = f"UPDATE models SET {', '.join(sets)} WHERE id = ?"
-        
-        with self._connect() as conn:
-            conn.execute(sql, values)
-            conn.commit()
+        self._db.update("models", data, "id = ?", (model_id,))
         
         logger.info(f"Updated model id={model_id} fields={list(kwargs.keys())}")
         return self.get_model(model_id)
@@ -1706,11 +1640,7 @@ class AccountManager:
             KeyError: If model not found.
         """
         self.get_model(model_id)  # raises KeyError if missing
-        
-        with self._connect() as conn:
-            conn.execute("DELETE FROM models WHERE id = ?", (model_id,))
-            conn.commit()
-        
+        self._db.delete("models", "id = ?", (model_id,))
         logger.info(f"Deleted model id={model_id}")
 
     def get_models_by_provider(self, provider_type: str) -> List[str]:
@@ -1722,15 +1652,14 @@ class AccountManager:
         Returns:
             List of model_id strings (only enabled models).
         """
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT model_id FROM models 
-                WHERE provider_type = ? AND enabled = 1
-                ORDER BY priority DESC, model_id
-                """,
-                (provider_type,)
-            ).fetchall()
+        rows = self._db.fetch_all(
+            """
+            SELECT model_id FROM models 
+            WHERE provider_type = ? AND enabled = 1
+            ORDER BY priority DESC, model_id
+            """,
+            (provider_type,)
+        )
         
         return [row["model_id"] for row in rows]
 
@@ -1740,7 +1669,5 @@ class AccountManager:
         Returns:
             Total model count.
         """
-        with self._connect() as conn:
-            row = conn.execute("SELECT COUNT(*) as count FROM models").fetchone()
-        
-        return row["count"] if row else 0
+        row = self._db.fetch_one("SELECT COUNT(*) as count FROM models")
+        return row[0] if row else 0

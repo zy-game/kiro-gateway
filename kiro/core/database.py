@@ -1009,3 +1009,392 @@ class Database:
         
         row = self.fetch_one(query, tuple(params) if params else None)
         return row[0] if row else 0
+    
+    # ------------------------------------------------------------------
+    # Request Log management methods
+    # ------------------------------------------------------------------
+    
+    def create_request_log(
+        self,
+        api_key_id: Optional[int],
+        account_id: Optional[int],
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        status: str,
+        channel: str,
+        duration_ms: Optional[int] = None
+    ) -> int:
+        """Create a new request log entry.
+        
+        Args:
+            api_key_id: API key ID (nullable).
+            account_id: Account ID (nullable).
+            model: Model identifier (e.g., "claude-sonnet-4").
+            input_tokens: Number of input tokens.
+            output_tokens: Number of output tokens.
+            status: Request status (e.g., "success", "error").
+            channel: Channel type (e.g., "openai", "anthropic").
+            duration_ms: Optional request duration in milliseconds.
+        
+        Returns:
+            ID of the newly created log entry.
+        
+        Example:
+            log_id = db.create_request_log(
+                api_key_id=1,
+                account_id=2,
+                model="claude-sonnet-4",
+                input_tokens=100,
+                output_tokens=200,
+                status="success",
+                channel="openai",
+                duration_ms=1500
+            )
+        """
+        from datetime import datetime, timezone
+        
+        created_at = datetime.now(timezone.utc).isoformat()
+        
+        data = {
+            "api_key_id": api_key_id,
+            "account_id": account_id,
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "status": status,
+            "channel": channel,
+            "created_at": created_at,
+            "duration_ms": duration_ms
+        }
+        
+        log_id = self.insert("request_logs", data)
+        
+        # Keep only the last 10000 records (cleanup old logs)
+        self.execute(
+            """
+            DELETE FROM request_logs 
+            WHERE id NOT IN (
+                SELECT id FROM request_logs 
+                ORDER BY created_at DESC 
+                LIMIT 10000
+            )
+            """,
+            commit=True
+        )
+        
+        return log_id
+    
+    def list_request_logs(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        search_model: Optional[str] = None,
+        search_status: Optional[str] = None,
+        search_channel: Optional[str] = None,
+        api_key_id: Optional[int] = None,
+        account_id: Optional[int] = None
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """List request logs with pagination and complex filtering.
+        
+        This method performs a JOIN with accounts and api_keys tables to
+        enrich the log data with account type and API key name.
+        
+        Args:
+            limit: Maximum number of records to return.
+            offset: Number of records to skip.
+            search_model: Filter by model name (partial match).
+            search_status: Filter by status (exact match).
+            search_channel: Filter by channel (exact match).
+            api_key_id: Filter by specific API key ID.
+            account_id: Filter by specific account ID.
+        
+        Returns:
+            Tuple of (list of log dicts with enriched data, total count).
+        
+        Example:
+            # Get first 50 logs
+            logs, total = db.list_request_logs(limit=50, offset=0)
+            
+            # Filter by model and status
+            logs, total = db.list_request_logs(
+                search_model="claude",
+                search_status="success"
+            )
+            
+            # Get logs for specific account
+            logs, total = db.list_request_logs(account_id=1)
+        """
+        # Build WHERE clause with multiple filters
+        where_clauses = []
+        params = []
+        
+        if search_model:
+            where_clauses.append("rl.model LIKE ?")
+            params.append(f"%{search_model}%")
+        
+        if search_status:
+            where_clauses.append("rl.status = ?")
+            params.append(search_status)
+        
+        if search_channel:
+            where_clauses.append("rl.channel = ?")
+            params.append(search_channel)
+        
+        if api_key_id is not None:
+            where_clauses.append("rl.api_key_id = ?")
+            params.append(api_key_id)
+        
+        if account_id is not None:
+            where_clauses.append("rl.account_id = ?")
+            params.append(account_id)
+        
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        
+        # Get total count
+        count_query = f"SELECT COUNT(*) as total FROM request_logs rl WHERE {where_sql}"
+        count_row = self.fetch_one(count_query, tuple(params) if params else None)
+        total = count_row[0] if count_row else 0
+        
+        # Get logs with JOIN to enrich data
+        query = f"""
+            SELECT 
+                rl.*,
+                a.type as account_type,
+                ak.name as api_key_name
+            FROM request_logs rl
+            LEFT JOIN accounts a ON rl.account_id = a.id
+            LEFT JOIN api_keys ak ON rl.api_key_id = ak.id
+            WHERE {where_sql}
+            ORDER BY rl.created_at DESC 
+            LIMIT ? OFFSET ?
+        """
+        
+        rows = self.fetch_all(query, tuple(params + [limit, offset]))
+        
+        # Convert rows to dictionaries with enriched data
+        logs = []
+        for row in rows:
+            log_dict = {
+                "id": row["id"],
+                "api_key_id": row["api_key_id"],
+                "api_key_name": row["api_key_name"] or f"Key #{row['api_key_id']}" if row["api_key_id"] else "N/A",
+                "account_id": row["account_id"],
+                "account_name": f"{row['account_type']} #{row['account_id']}" if row["account_id"] and row["account_type"] else "N/A",
+                "model": row["model"],
+                "input_tokens": row["input_tokens"],
+                "output_tokens": row["output_tokens"],
+                "status": row["status"],
+                "channel": row["channel"],
+                "created_at": row["created_at"],
+                "duration_ms": row["duration_ms"] if "duration_ms" in row.keys() else None
+            }
+            logs.append(log_dict)
+        
+        return logs, total
+    
+    def get_daily_stats(self, days: int = 30) -> List[Dict[str, Any]]:
+        """Get daily usage statistics with aggregation.
+        
+        This method performs GROUP BY aggregation to calculate daily statistics
+        including request count, total input tokens, and total output tokens.
+        
+        Args:
+            days: Number of days to look back (default: 30).
+        
+        Returns:
+            List of dicts with day, requests, input_tokens, output_tokens.
+            Results are ordered by day ascending (oldest first).
+        
+        Example:
+            # Get last 30 days of stats
+            stats = db.get_daily_stats(days=30)
+            for stat in stats:
+                print(f"{stat['day']}: {stat['requests']} requests, "
+                      f"{stat['input_tokens']} input tokens")
+            
+            # Get last 7 days
+            stats = db.get_daily_stats(days=7)
+        """
+        from datetime import datetime, timedelta, timezone
+        
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        
+        query = """
+            SELECT 
+                strftime('%Y-%m-%d', created_at) as day,
+                COUNT(*) as requests,
+                SUM(input_tokens) as input_tokens,
+                SUM(output_tokens) as output_tokens
+            FROM request_logs
+            WHERE created_at >= ?
+            GROUP BY day
+            ORDER BY day ASC
+        """
+        
+        rows = self.fetch_all(query, (cutoff,))
+        
+        return [
+            {
+                "day": row["day"],
+                "requests": row["requests"],
+                "input_tokens": row["input_tokens"] or 0,
+                "output_tokens": row["output_tokens"] or 0
+            }
+            for row in rows
+        ]
+    
+    def get_hourly_stats(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """Get hourly usage statistics with time-based grouping.
+        
+        This method performs GROUP BY with time truncation to calculate
+        hourly statistics including request count, total input tokens,
+        and total output tokens.
+        
+        Args:
+            hours: Number of hours to look back (default: 24).
+        
+        Returns:
+            List of dicts with hour, requests, input_tokens, output_tokens.
+            Results are ordered by hour ascending (oldest first).
+        
+        Example:
+            # Get last 24 hours of stats
+            stats = db.get_hourly_stats(hours=24)
+            for stat in stats:
+                print(f"{stat['hour']}: {stat['requests']} requests")
+            
+            # Get last 12 hours
+            stats = db.get_hourly_stats(hours=12)
+        """
+        from datetime import datetime, timedelta, timezone
+        
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        
+        query = """
+            SELECT 
+                strftime('%Y-%m-%d %H:00:00', created_at) as hour,
+                COUNT(*) as requests,
+                SUM(input_tokens) as input_tokens,
+                SUM(output_tokens) as output_tokens
+            FROM request_logs
+            WHERE created_at >= ?
+            GROUP BY hour
+            ORDER BY hour ASC
+        """
+        
+        rows = self.fetch_all(query, (cutoff,))
+        
+        return [
+            {
+                "hour": row["hour"],
+                "requests": row["requests"],
+                "input_tokens": row["input_tokens"] or 0,
+                "output_tokens": row["output_tokens"] or 0
+            }
+            for row in rows
+        ]
+    
+    # ------------------------------------------------------------------
+    # Session management methods
+    # ------------------------------------------------------------------
+    
+    def create_session(
+        self,
+        username: str,
+        token: str,
+        expires_at: str
+    ) -> str:
+        """Create a new session for a user.
+        
+        Args:
+            username: Username associated with the session.
+            token: Session token (should be unique, e.g., UUID).
+            expires_at: ISO 8601 timestamp when the session expires.
+        
+        Returns:
+            The session token that was created.
+        
+        Raises:
+            sqlite3.IntegrityError: If token already exists.
+        
+        Example:
+            from datetime import datetime, timedelta, timezone
+            
+            token = str(uuid.uuid4())
+            expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            
+            session_token = db.create_session(
+                username="admin",
+                token=token,
+                expires_at=expires_at
+            )
+        """
+        from datetime import datetime, timezone
+        
+        created_at = datetime.now(timezone.utc).isoformat()
+        
+        data = {
+            "session_token": token,
+            "username": username,
+            "created_at": created_at,
+            "expires_at": expires_at
+        }
+        
+        self.insert("sessions", data)
+        return token
+    
+    def get_session(self, token: str) -> Optional[sqlite3.Row]:
+        """Fetch a session by token.
+        
+        Args:
+            token: Session token to look up.
+        
+        Returns:
+            Session row or None if not found.
+        
+        Example:
+            session = db.get_session("some-token-uuid")
+            if session:
+                print(f"User: {session['username']}, Expires: {session['expires_at']}")
+        """
+        return self.fetch_one(
+            "SELECT * FROM sessions WHERE session_token = ?",
+            (token,)
+        )
+    
+    def delete_session(self, token: str) -> int:
+        """Delete a session by token.
+        
+        Args:
+            token: Session token to delete.
+        
+        Returns:
+            Number of rows deleted (1 if session existed, 0 otherwise).
+        
+        Example:
+            deleted = db.delete_session("some-token-uuid")
+            if deleted:
+                print("Session deleted successfully")
+        """
+        return self.delete("sessions", "session_token = ?", (token,))
+    
+    def cleanup_expired_sessions(self) -> int:
+        """Delete all expired sessions from the database.
+        
+        Compares the expires_at timestamp with the current time and
+        removes all sessions that have expired.
+        
+        Returns:
+            Number of expired sessions deleted.
+        
+        Example:
+            # Run periodically to clean up old sessions
+            deleted = db.cleanup_expired_sessions()
+            logger.info(f"Cleaned up {deleted} expired sessions")
+        """
+        from datetime import datetime, timezone
+        
+        now = datetime.now(timezone.utc).isoformat()
+        
+        return self.delete("sessions", "expires_at < ?", (now,))
