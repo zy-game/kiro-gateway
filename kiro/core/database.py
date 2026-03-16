@@ -765,3 +765,247 @@ class Database:
                 print("Admin user deleted successfully")
         """
         return self.delete("admin_users", "username = ?", (username,))
+    
+    # ------------------------------------------------------------------
+    # Model management methods
+    # ------------------------------------------------------------------
+    
+    def get_model(self, model_id: str, provider_type: Optional[str] = None) -> Optional[sqlite3.Row]:
+        """Fetch a single model by model_id and optional provider_type.
+        
+        Args:
+            model_id: Model identifier (e.g., "claude-sonnet-4").
+            provider_type: Optional provider type filter (e.g., "kiro", "glm").
+        
+        Returns:
+            Model row or None if not found.
+        
+        Example:
+            model = db.get_model("claude-sonnet-4", "kiro")
+            if model:
+                print(model["display_name"], model["enabled"])
+        """
+        if provider_type:
+            return self.fetch_one(
+                "SELECT * FROM models WHERE model_id = ? AND provider_type = ?",
+                (model_id, provider_type)
+            )
+        else:
+            return self.fetch_one(
+                "SELECT * FROM models WHERE model_id = ?",
+                (model_id,)
+            )
+    
+    def list_models(
+        self,
+        provider_type: Optional[str] = None,
+        enabled_only: bool = True
+    ) -> List[sqlite3.Row]:
+        """List models with optional filtering.
+        
+        Args:
+            provider_type: Filter by provider type (e.g., "kiro", "glm").
+            enabled_only: If True, only return enabled models (enabled=1).
+        
+        Returns:
+            List of model rows sorted by priority DESC, then model_id ASC.
+        
+        Example:
+            # Get all enabled kiro models
+            models = db.list_models(provider_type="kiro")
+            
+            # Get all models regardless of enabled status
+            models = db.list_models(enabled_only=False)
+        """
+        query = "SELECT * FROM models"
+        params = []
+        conditions = []
+        
+        if provider_type:
+            conditions.append("provider_type = ?")
+            params.append(provider_type)
+        
+        if enabled_only:
+            conditions.append("enabled = 1")
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " ORDER BY priority DESC, model_id ASC"
+        
+        return self.fetch_all(query, tuple(params) if params else None)
+    
+    def create_model(
+        self,
+        provider_type: str,
+        model_id: str,
+        display_name: Optional[str] = None,
+        enabled: bool = True,
+        priority: int = 0
+    ) -> int:
+        """Create a new model.
+        
+        Args:
+            provider_type: Provider type (e.g., "kiro", "glm").
+            model_id: Model identifier (e.g., "claude-sonnet-4").
+            display_name: Optional human-readable display name.
+            enabled: Whether the model is enabled (default: True).
+            priority: Scheduling priority (higher = preferred, default: 0).
+        
+        Returns:
+            ID of the newly created model.
+        
+        Raises:
+            sqlite3.IntegrityError: If (provider_type, model_id) already exists.
+        
+        Example:
+            model_id = db.create_model(
+                provider_type="kiro",
+                model_id="claude-sonnet-4",
+                display_name="Claude Sonnet 4",
+                enabled=True,
+                priority=10
+            )
+        """
+        from datetime import datetime, timezone
+        
+        now = datetime.now(timezone.utc).isoformat()
+        
+        data = {
+            "provider_type": provider_type,
+            "model_id": model_id,
+            "display_name": display_name,
+            "enabled": 1 if enabled else 0,
+            "priority": priority,
+            "created_at": now,
+            "updated_at": now
+        }
+        
+        return self.insert("models", data)
+    
+    def update_model(
+        self,
+        model_id: str,
+        provider_type: Optional[str] = None,
+        **kwargs: Any
+    ) -> int:
+        """Update model fields.
+        
+        Supported kwargs: display_name, enabled, priority.
+        
+        Args:
+            model_id: Model identifier to update.
+            provider_type: Optional provider type for disambiguation.
+            **kwargs: Fields to update.
+        
+        Returns:
+            Number of rows updated (should be 1 if model exists).
+        
+        Example:
+            # Update priority and enabled status
+            db.update_model("claude-sonnet-4", provider_type="kiro", 
+                          priority=20, enabled=True)
+            
+            # Update display name only
+            db.update_model("claude-sonnet-4", display_name="Claude Sonnet 4 (Latest)")
+        """
+        from datetime import datetime, timezone
+        
+        # Map public field names to database column names
+        field_map = {
+            "display_name": "display_name",
+            "enabled": "enabled",
+            "priority": "priority"
+        }
+        
+        data = {}
+        for key, value in kwargs.items():
+            if key in field_map:
+                # Convert boolean to integer for enabled field
+                if key == "enabled" and isinstance(value, bool):
+                    value = 1 if value else 0
+                data[field_map[key]] = value
+        
+        if not data:
+            return 0
+        
+        # Always update the updated_at timestamp
+        data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        
+        # Build WHERE clause
+        if provider_type:
+            where = "model_id = ? AND provider_type = ?"
+            where_params = (model_id, provider_type)
+        else:
+            where = "model_id = ?"
+            where_params = (model_id,)
+        
+        return self.update("models", data, where, where_params)
+    
+    def delete_model(
+        self,
+        model_id: str,
+        provider_type: Optional[str] = None
+    ) -> int:
+        """Delete a model.
+        
+        Args:
+            model_id: Model identifier to delete.
+            provider_type: Optional provider type for disambiguation.
+        
+        Returns:
+            Number of rows deleted (1 if model existed, 0 otherwise).
+        
+        Example:
+            # Delete specific model for a provider
+            deleted = db.delete_model("claude-sonnet-4", provider_type="kiro")
+            
+            # Delete all models with this model_id (across all providers)
+            deleted = db.delete_model("claude-sonnet-4")
+        """
+        if provider_type:
+            return self.delete(
+                "models",
+                "model_id = ? AND provider_type = ?",
+                (model_id, provider_type)
+            )
+        else:
+            return self.delete("models", "model_id = ?", (model_id,))
+    
+    def count_models(
+        self,
+        provider_type: Optional[str] = None,
+        enabled_only: bool = False
+    ) -> int:
+        """Count models with optional filtering.
+        
+        Args:
+            provider_type: Filter by provider type (e.g., "kiro", "glm").
+            enabled_only: If True, only count enabled models.
+        
+        Returns:
+            Number of models matching the criteria.
+        
+        Example:
+            # Count all models
+            total = db.count_models()
+            
+            # Count enabled kiro models
+            kiro_count = db.count_models(provider_type="kiro", enabled_only=True)
+        """
+        query = "SELECT COUNT(*) FROM models"
+        params = []
+        conditions = []
+        
+        if provider_type:
+            conditions.append("provider_type = ?")
+            params.append(provider_type)
+        
+        if enabled_only:
+            conditions.append("enabled = 1")
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        row = self.fetch_one(query, tuple(params) if params else None)
+        return row[0] if row else 0
