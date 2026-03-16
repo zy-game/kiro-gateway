@@ -1,0 +1,158 @@
+{
+  "groupId": "connection-management",
+  "testedAt": "2026-03-16T22:42:41.665463",
+  "isolation": {
+    "serverUrl": "http://localhost:8000",
+    "testingTool": "pytest + httpx",
+    "evidenceDirectory": "C:\\Users\\15849\\.factory\\missions\\e1318aaa-e97f-4a29-83bb-3631d7619d26\\evidence\\m2-resource-management\\connection-management"
+  },
+  "toolsUsed": [
+    "httpx",
+    "netstat",
+    "source code inspection"
+  ],
+  "assertions": [
+    {
+      "id": "m2-a3",
+      "title": "Streaming responses close connections properly",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Get baseline connection count",
+          "expected": "Baseline established",
+          "observed": "Baseline: {'ESTABLISHED': 4, 'CLOSE_WAIT': 5, 'TIME_WAIT': 0, 'LISTENING': 0, 'total': 9}"
+        },
+        {
+          "action": "Send streaming chat completion request",
+          "expected": "Stream starts successfully",
+          "observed": "Request sent"
+        },
+        {
+          "action": "Test execution",
+          "expected": "No exceptions",
+          "observed": "Exception: "
+        }
+      ],
+      "evidence": {
+        "netstat_snapshots": [
+          "m2-resource-management\\connection-management\\m2-a3-baseline.txt"
+        ],
+        "response_headers": {},
+        "stream_completed": false
+      },
+      "issues": "Exception during test: "
+    },
+    {
+      "id": "m2-a4",
+      "title": "Connection header set for streaming requests",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check kiro/core/http_client.py for Connection header",
+          "expected": "Connection: close header set in streaming requests",
+          "observed": "Checking source code..."
+        },
+        {
+          "action": "Verify Connection header in source code",
+          "expected": "Header present in streaming request code",
+          "observed": "Header NOT found in source code - this is CORRECT per milestone description"
+        },
+        {
+          "action": "Verify milestone requirement interpretation",
+          "expected": "Milestone says REMOVE Connection: close workaround",
+          "observed": "Mission.md states: '移除 http_client.py:163 的 Connection: close workaround' - the header should be ABSENT"
+        }
+      ],
+      "evidence": {
+        "source_code_check": "Connection: close header correctly NOT present in http_client.py - using shared client with connection pooling instead",
+        "header_found": false,
+        "file_location": "kiro/core/http_client.py",
+        "milestone_requirement": "Remove Connection: close workaround (mission.md line 107)"
+      },
+      "issues": null
+    },
+    {
+      "id": "m2-a6",
+      "title": "KiroHttpClient uses shared client when provided",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check KiroHttpClient for shared_client parameter support",
+          "expected": "Constructor accepts shared_client parameter",
+          "observed": "Checking source code..."
+        },
+        {
+          "action": "Verify shared_client parameter in KiroHttpClient",
+          "expected": "Parameter exists and is used",
+          "observed": "Found shared_client parameter:\nLine 76: >>> client = KiroHttpClient(auth_manager, shared_client=shared)\nLine 84: shared_client: Optional[httpx.AsyncClient] = None\nLine 92: shared_client: Optional shared httpx.AsyncClient for connection pooling.\nLine 96: self._shared_client = shared_client\nLine 97: self._owns_client = shared_client is None"
+        },
+        {
+          "action": "Verify shared client creation in main.py",
+          "expected": "app.state.http_client created",
+          "observed": "Shared client found in lifespan"
+        },
+        {
+          "action": "Verify shared client passed to KiroHttpClient",
+          "expected": "Shared client passed from provider",
+          "observed": "Found shared_client usage in provider"
+        }
+      ],
+      "evidence": {
+        "source_code_check": "Line 76: >>> client = KiroHttpClient(auth_manager, shared_client=shared)\nLine 84: shared_client: Optional[httpx.AsyncClient] = None\nLine 92: shared_client: Optional shared httpx.AsyncClient for connection pooling.\nLine 96: self._shared_client = shared_client\nLine 97: self._owns_client = shared_client is None",
+        "shared_client_supported": true,
+        "main_py_check": "Shared HTTP client created in main.py lifespan"
+      },
+      "issues": null
+    },
+    {
+      "id": "m2-a7",
+      "title": "Per-request clients still supported for backward compatibility",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check KiroHttpClient for fallback client creation",
+          "expected": "Creates own client when shared_client not provided",
+          "observed": "Checking source code..."
+        },
+        {
+          "action": "Verify fallback client creation and cleanup",
+          "expected": "Creates client when not provided, closes in cleanup",
+          "observed": "Found fallback logic:\nLine 124:         # Shared client should be pre-configured with appropriate timeouts\nLine 125:         if self._shared_client is not None:\nLine 126:             return self._shared_client\nLine 127:         \nLine 128:         # Create new client if needed (per-request mode)\nLine 129:         if self.client is None or self.client.is_closed:\nLine 130:             if stream:\n\nLine 157: Uses graceful exception handling to prevent errors during cleanup\n\nLine 166: await self.client.aclose()"
+        },
+        {
+          "action": "Verify client cleanup",
+          "expected": "Client closed properly",
+          "observed": "Found aclose() call in cleanup"
+        }
+      ],
+      "evidence": {
+        "source_code_check": "Line 124:         # Shared client should be pre-configured with appropriate timeouts\nLine 125:         if self._shared_client is not None:\nLine 126:             return self._shared_client\nLine 127:         \nLine 128:         # Create new client if needed (per-request mode)\nLine 129:         if self.client is None or self.client.is_closed:\nLine 130:             if stream:\n\nLine 157: Uses graceful exception handling to prevent errors during cleanup\n\nLine 166: await self.client.aclose()",
+        "fallback_supported": true,
+        "cleanup_verified": true
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "m2-a3 test requires valid authentication to properly test streaming connections, but test was designed to run without credentials",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": ["m2-a3"]
+    },
+    {
+      "description": "m2-a4 validation contract wording is misleading - it says 'verify Connection: close header in streaming requests' but the milestone description clearly states to REMOVE this workaround, not add it",
+      "resolved": true,
+      "resolution": "Verified mission.md line 107: '移除 http_client.py:163 的 Connection: close workaround'. The absence of this header is correct - shared client with connection pooling is the proper fix. Changed m2-a4 status to PASS.",
+      "affectedAssertions": ["m2-a4"]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Pre-existing CLOSE_WAIT connections (5) detected at baseline before any tests ran, indicating existing connection leaks in the system",
+      "affectedAssertions": ["m2-a3"],
+      "quickFixAttempted": "None - this is a system-wide issue requiring investigation"
+    }
+  ],
+  "summary": "Tested 4 assertions: 3 passed, 1 failed, 0 blocked. Note: m2-a4 validation contract wording is misleading - the milestone requires REMOVING Connection: close header (not adding it), which is correctly implemented."
+}

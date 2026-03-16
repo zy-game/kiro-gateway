@@ -1,0 +1,99 @@
+{
+  "groupId": "concurrent-load",
+  "testedAt": "2026-03-16T22:43:13.502191",
+  "isolation": {
+    "serverUrl": "http://localhost:8000",
+    "testingTool": "pytest + httpx + asyncio",
+    "evidenceDirectory": "C:\\Users\\15849\\.factory\\missions\\e1318aaa-e97f-4a29-83bb-3631d7619d26\\evidence\\m2-resource-management\\concurrent-load\\"
+  },
+  "toolsUsed": ["httpx", "psutil", "asyncio", "netstat"],
+  "assertions": [
+    {
+      "id": "m2-a8",
+      "title": "No connection leaks under concurrent load",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Measure baseline connection count",
+          "expected": "Baseline established",
+          "observed": "Baseline: 0 connections to port 8000"
+        },
+        {
+          "action": "Send 50 concurrent streaming requests to /v1/chat/completions",
+          "expected": "Requests complete successfully",
+          "observed": "All 50 requests failed with ReadTimeout - server not responding on localhost:8000"
+        },
+        {
+          "action": "Monitor connection count during load",
+          "expected": "Connections established and tracked",
+          "observed": "0 connections (server not running)"
+        },
+        {
+          "action": "Verify connection count returns to baseline after requests complete",
+          "expected": "Connection leak = 0",
+          "observed": "Connection leak = 0 (but no connections were made due to server unavailability)"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m2-resource-management/concurrent-load/load_test_output.txt",
+        "connectionMetrics": {
+          "baseline": 0,
+          "preLoad": 0,
+          "duringLoad": 0,
+          "postLoad": 0,
+          "leak": 0
+        },
+        "errorDetails": "All 50 requests failed with httpx.ReadTimeout after 30 seconds. Server at http://localhost:8000 is not responding."
+      },
+      "issues": "Cannot test connection leak behavior because the FastAPI server is not running on localhost:8000. The test attempted to connect but all requests timed out after 30 seconds."
+    },
+    {
+      "id": "m2-a9",
+      "title": "Memory usage stable under load",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Measure baseline memory usage",
+          "expected": "Baseline established",
+          "observed": "Baseline: 36.78 MB (test script memory)"
+        },
+        {
+          "action": "Send 50 concurrent streaming requests",
+          "expected": "Requests complete successfully",
+          "observed": "All 50 requests failed with ReadTimeout - server not responding"
+        },
+        {
+          "action": "Measure memory usage after load",
+          "expected": "Memory growth <10%",
+          "observed": "Memory growth: 11.62% (49.66 MB post-load vs 43.61 MB pre-load) - but this is test client memory, not server memory"
+        },
+        {
+          "action": "Verify memory returns to stable state",
+          "expected": "No continuous memory growth",
+          "observed": "Test client memory remained at 49.66 MB after 5 second wait"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m2-resource-management/concurrent-load/load_test_output.txt",
+        "memoryMetrics": {
+          "baseline": 36.78,
+          "preLoad": 43.61,
+          "duringLoad": 49.66,
+          "postLoad": 49.66,
+          "growthPercent": 11.62
+        },
+        "errorDetails": "Cannot measure server memory usage because server is not running. Measured test client memory only, which grew 11.62% due to httpx connection pool overhead from failed connection attempts."
+      },
+      "issues": "Cannot test server memory stability because the FastAPI server is not running on localhost:8000. The memory measurements captured are for the test client process, not the server process."
+    }
+  ],
+  "frictions": [],
+  "blockers": [
+    {
+      "description": "FastAPI server is not running on localhost:8000. All HTTP requests to /v1/chat/completions failed with ReadTimeout after 30 seconds. Verified with curl that port 8000 is not accepting connections.",
+      "affectedAssertions": ["m2-a8", "m2-a9"],
+      "quickFixAttempted": "Verified server status with curl and netstat. Port 8000 is not listening. Per flow-validator-guidance.md, validators must not restart the server as it is shared infrastructure. The parent agent or user must start the server before testing can proceed."
+    }
+  ],
+  "summary": "Tested 2 assertions: both blocked due to server unavailability. The FastAPI server must be running on localhost:8000 before concurrent load testing can be performed. Test infrastructure (httpx, psutil, asyncio) is working correctly - the test script successfully measured baseline metrics and attempted 50 concurrent requests, but all timed out because the server is not responding."
+}

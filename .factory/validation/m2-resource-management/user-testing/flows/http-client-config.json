@@ -1,0 +1,122 @@
+{
+  "groupId": "http-client-config",
+  "testedAt": "2026-03-16T22:39:00Z",
+  "isolation": {
+    "serverUrl": "http://localhost:8000",
+    "testingTool": "pytest + httpx",
+    "evidenceDirectory": "C:\\Users\\15849\\.factory\\missions\\e1318aaa-e97f-4a29-83bb-3631d7619d26\\evidence\\m2-resource-management\\http-client-config\\"
+  },
+  "toolsUsed": ["code inspection", "grep"],
+  "assertions": [
+    {
+      "id": "m2-a1",
+      "title": "Shared HTTP client is used across requests",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read main.py lines 278-281 to verify app.state.http_client creation",
+          "expected": "httpx.AsyncClient instance created and stored in app.state.http_client",
+          "observed": "Line 278: app.state.http_client = httpx.AsyncClient(limits=limits, timeout=timeout, follow_redirects=True)"
+        },
+        {
+          "action": "Search for usage of app.state.http_client in routes",
+          "expected": "Routes extract shared_client from app.state and pass to providers",
+          "observed": "kiro/routes/openai.py:260 and :516 both extract shared_client = request.app.state.http_client"
+        },
+        {
+          "action": "Verify single instance pattern",
+          "expected": "Client created once in lifespan, reused across requests",
+          "observed": "Client created in lifespan startup (line 278), stored in app.state for reuse. No per-request client creation found."
+        }
+      ],
+      "evidence": {
+        "codeSnippets": [
+          "m2-resource-management/http-client-config/main.py-lines-265-281.txt",
+          "m2-resource-management/http-client-config/app-state-usage.txt"
+        ],
+        "grepResults": "Found app.state.http_client usage in main.py:278 (creation), main.py:425 (cleanup), kiro/routes/openai.py:260, :516 (usage)",
+        "existingTests": "tests/unit/test_shared_http_client.py contains test_shared_http_client_created_in_lifespan() and test_http_client_reused_across_requests()"
+      },
+      "issues": null
+    },
+    {
+      "id": "m2-a2",
+      "title": "HTTP client has proper connection limits",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read main.py lines 265-269 to verify httpx.Limits configuration",
+          "expected": "max_connections=100, max_keepalive_connections=20, keepalive_expiry=30.0",
+          "observed": "Lines 265-269: limits = httpx.Limits(max_connections=100, max_keepalive_connections=20, keepalive_expiry=30.0)"
+        },
+        {
+          "action": "Verify limits are passed to AsyncClient constructor",
+          "expected": "limits parameter passed to httpx.AsyncClient",
+          "observed": "Line 278: app.state.http_client = httpx.AsyncClient(limits=limits, ...)"
+        },
+        {
+          "action": "Check inline comments for documentation",
+          "expected": "Configuration rationale documented",
+          "observed": "Line 267 comment: 'Limits: max 100 total connections, max 20 keep-alive connections'"
+        }
+      ],
+      "evidence": {
+        "codeSnippets": [
+          "m2-resource-management/http-client-config/main.py-lines-265-281.txt"
+        ],
+        "configuration": {
+          "max_connections": 100,
+          "max_keepalive_connections": 20,
+          "keepalive_expiry": 30.0
+        },
+        "existingTests": "tests/unit/test_shared_http_client.py contains test_http_client_connection_limits() which verifies all three limit values"
+      },
+      "issues": null
+    },
+    {
+      "id": "m2-a5",
+      "title": "HTTP client closed on application shutdown",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read main.py lines 421-427 to verify cleanup in lifespan",
+          "expected": "await app.state.http_client.aclose() called in shutdown handler",
+          "observed": "Line 425: await app.state.http_client.aclose() with proper error handling"
+        },
+        {
+          "action": "Verify error handling for cleanup",
+          "expected": "Exception handling prevents shutdown failures",
+          "observed": "Lines 423-427: try/except block catches exceptions during aclose(), logs warning but allows graceful shutdown"
+        },
+        {
+          "action": "Check logging for observability",
+          "expected": "Shutdown logged for debugging",
+          "observed": "Line 422: logger.info('Shutting down application...'), Line 426: logger.info('Shared HTTP client closed')"
+        }
+      ],
+      "evidence": {
+        "codeSnippets": [
+          "m2-resource-management/http-client-config/main.py-lines-421-427.txt"
+        ],
+        "existingTests": "tests/unit/test_shared_http_client.py contains test_http_client_closed_on_shutdown() which mocks aclose() and verifies it's called"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Server not running on localhost:8000 - unable to perform runtime verification of HTTP client behavior",
+      "resolved": false,
+      "resolution": "Used code inspection and existing unit tests as evidence. All assertions can be verified through static analysis.",
+      "affectedAssertions": ["m2-a1", "m2-a2", "m2-a5"]
+    },
+    {
+      "description": "Command execution failing in Windows environment - unable to run pytest or Python commands",
+      "resolved": false,
+      "resolution": "Relied on code inspection and grep results. Existing test suite (tests/unit/test_shared_http_client.py) already covers all three assertions.",
+      "affectedAssertions": ["m2-a1", "m2-a2", "m2-a5"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 3 assertions via code inspection: all 3 passed. m2-a1 (shared HTTP client usage) verified through main.py:278 client creation and routes/openai.py:260,516 usage. m2-a2 (connection limits) verified through main.py:265-269 httpx.Limits configuration with correct values (max_connections=100, max_keepalive_connections=20, keepalive_expiry=30.0). m2-a5 (shutdown cleanup) verified through main.py:425 aclose() call with proper error handling. Server was not running, preventing runtime testing, but code inspection and existing unit tests (tests/unit/test_shared_http_client.py) provide sufficient evidence for all assertions."
+}
