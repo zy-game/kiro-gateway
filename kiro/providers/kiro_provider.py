@@ -291,8 +291,9 @@ class KiroProvider(BaseProvider):
             if response.status_code != 200:
                 try:
                     error_content = await response.aread()
-                except Exception:
-                    error_content = b"Unknown error"
+                except Exception as e:
+                    error_content = f"Failed to read error response: {type(e).__name__}: {str(e)}".encode('utf-8')
+                    logger.warning(f"Could not read error response body from Kiro API: {e}")
                 
                 await http_client.close()
                 error_text = error_content.decode('utf-8', errors='replace')

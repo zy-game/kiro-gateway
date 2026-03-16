@@ -428,8 +428,9 @@ async def stream_with_first_token_retry(
                 try:
                     error_content = await response.aread()
                     error_text = error_content.decode('utf-8', errors='replace')
-                except Exception:
-                    error_text = "Unknown error"
+                except Exception as e:
+                    error_text = f"Failed to read error response: {type(e).__name__}: {str(e)}"
+                    logger.warning(f"Could not read error response body: {e}")
                 
                 try:
                     await response.aclose()

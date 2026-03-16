@@ -437,6 +437,46 @@ app = FastAPI(
 )
 
 
+# ==================================================================================================
+# Global Exception Handlers - Simplify error output
+# ==================================================================================================
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler to simplify error messages and avoid long stack traces.
+    Only logs the essential error information without framework internals.
+    """
+    from fastapi.responses import JSONResponse
+    
+    # Extract the root cause if it's an ExceptionGroup
+    error_message = str(exc)
+    error_type = type(exc).__name__
+    
+    # For ExceptionGroup, extract the actual error
+    if error_type == "ExceptionGroup" and hasattr(exc, 'exceptions'):
+        if exc.exceptions:
+            actual_exc = exc.exceptions[0]
+            error_type = type(actual_exc).__name__
+            error_message = str(actual_exc)
+    
+    # Log simplified error without full stack trace
+    logger.error(f"Request failed: {error_type}: {error_message}")
+    logger.debug(f"Request path: {request.url.path}")
+    
+    # Return user-friendly error response
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "message": f"{error_type}: {error_message}",
+                "type": "internal_error",
+                "code": "internal_server_error"
+            }
+        }
+    )
+
+
 # --- CORS Middleware ---
 # Allow CORS for all origins to support browser clients
 # and tools that send preflight OPTIONS requests

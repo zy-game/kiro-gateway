@@ -210,12 +210,18 @@ async def _refresh_kiro_token(
                         "expiresIn": data.get("expiresIn", 3600),
                         "refreshedAt": int(datetime.now(timezone.utc).timestamp()),
                     }
-                logger.error("Token refresh response missing accessToken")
+                logger.error(f"Token refresh response missing accessToken. Response: {response.text}")
                 return None
-            logger.error(f"Token refresh failed ({response.status_code}): {response.text}")
+            logger.error(f"Token refresh failed - HTTP {response.status_code}: {response.text}")
             return None
+    except httpx.TimeoutException as e:
+        logger.error(f"Token refresh timeout: {e}. URL: {sso_url}")
+        return None
+    except httpx.RequestError as e:
+        logger.error(f"Token refresh network error: {e}. URL: {sso_url}")
+        return None
     except Exception as e:
-        logger.error(f"Token refresh error: {e}")
+        logger.error(f"Token refresh unexpected error: {type(e).__name__}: {e}", exc_info=True)
         return None
 
 
@@ -801,6 +807,10 @@ class AccountManager:
 
             if fresh.type == "kiro":
                 if not (refresh_token and client_id and client_secret):
+                    logger.error(
+                        f"Account {account.id}: missing refresh credentials for force refresh. "
+                        f"Has refresh_token: {bool(refresh_token)}, client_id: {bool(client_id)}, client_secret: {bool(client_secret)}"
+                    )
                     raise RuntimeError(
                         f"Account {account.id}: missing refresh credentials for force refresh"
                     )
@@ -811,9 +821,13 @@ class AccountManager:
                     config["refreshedAt"] = result["refreshedAt"]
                     self._persist_config(fresh.id, config)
                     account.config = config
+                    logger.info(f"Account {account.id}: token refreshed successfully")
                     return config["accessToken"]
+                # Token refresh failed - detailed error already logged in _refresh_kiro_token
+                logger.warning(f"Account {account.id}: token refresh failed, see detailed error above")
                 raise RuntimeError(f"Account {account.id}: token refresh failed")
 
+            logger.error(f"Account {account.id}: force_refresh not supported for type '{fresh.type}'")
             raise RuntimeError(f"Account {account.id}: force_refresh not supported for type '{fresh.type}'")
 
     # ------------------------------------------------------------------

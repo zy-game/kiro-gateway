@@ -1,0 +1,8 @@
+# Services Configuration
+
+# No external services required for this mission.
+# The application uses:
+# - SQLite database (file-based, no service needed)
+# - FastAPI server (started manually or by tests)
+
+services: []

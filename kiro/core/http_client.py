@@ -200,6 +200,16 @@ class KiroHttpClient:
         Raises:
             HTTPException: On failure after all attempts (502/504)
         """
+        # Ensure token is valid before making the request
+        if self.account.type == "kiro":
+            logger.debug(f"Checking token validity for account {self.account.id} before request")
+            valid_token = await self.auth_manager._ensure_valid_token_kiro(self.account)
+            if valid_token:
+                self.account.config["accessToken"] = valid_token
+                logger.debug(f"Token validated/refreshed for account {self.account.id}")
+            else:
+                logger.warning(f"Could not ensure valid token for account {self.account.id}, proceeding with existing token")
+        
         # Determine the number of retry attempts
         # FIRST_TOKEN_TIMEOUT is used in streaming_openai.py, not here
         max_retries = FIRST_TOKEN_MAX_RETRIES if stream else MAX_RETRIES
@@ -231,9 +241,25 @@ class KiroHttpClient:
                 # 403 - token expired, refresh and retry
                 if response.status_code == 403:
                     logger.warning(f"Received 403, refreshing token (attempt {attempt + 1}/{MAX_RETRIES})")
-                    token = await self.auth_manager.force_refresh(self.account)
-                    self.account.config["accessToken"] = token
-                    continue
+                    try:
+                        token = await self.auth_manager.force_refresh(self.account)
+                        self.account.config["accessToken"] = token
+                        continue
+                    except RuntimeError as e:
+                        logger.error(f"Token refresh failed for account {self.account.id}: {e}")
+                        last_error = e
+                        last_error_info = NetworkErrorInfo(
+                            error_type="authentication_error",
+                            user_message=f"Account {self.account.id} authentication failed. Token refresh unsuccessful.",
+                            technical_details=str(e),
+                            is_retryable=False,
+                            suggested_http_code=401,
+                            troubleshooting_steps=[
+                                "Check if the account credentials are still valid",
+                                "Try re-authenticating the account in settings"
+                            ]
+                        )
+                        break
                 
                 # 429 - rate limit, wait and retry
                 if response.status_code == 429:
@@ -309,17 +335,23 @@ class KiroHttpClient:
                 detail=error_message.strip()
             )
         else:
-            # Fallback if no error was captured (shouldn't happen)
+            # Fallback if no error info was captured
+            error_detail = f"Request failed after {max_retries} attempts."
+            if last_error:
+                error_detail += f" Last error: {type(last_error).__name__}: {str(last_error)}"
+                logger.error(f"Request failed with unclassified error: {error_detail}")
+            else:
+                error_detail += " No error details available."
+                logger.error(f"Request failed without capturing error details")
+            
             if stream:
-                # For streaming, return error response instead of raising exception
                 error_event = {
                     "type": "error",
                     "error": {
                         "type": "api_error",
-                        "message": f"Streaming failed after {max_retries} attempts. Unknown error."
+                        "message": error_detail
                     }
                 }
-                # Return a mock response that yields the error
                 class ErrorResponse:
                     status_code = 504
                     async def aiter_lines(self):
@@ -328,7 +360,7 @@ class KiroHttpClient:
             else:
                 raise HTTPException(
                     status_code=502,
-                    detail=f"Request failed after {max_retries} attempts. Unknown error."
+                    detail=error_detail
                 )
     
     async def __aenter__(self) -> "KiroHttpClient":

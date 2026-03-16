@@ -94,7 +94,7 @@ def enhance_kiro_error(error_json: Dict[str, Any]) -> KiroErrorInfo:
     # Handle None values explicitly (preserve empty strings)
     original_message = error_json.get("message")
     if original_message is None:
-        original_message = "Unknown error"
+        original_message = error_json.get("error", "No error message provided")
     
     reason = error_json.get("reason")
     if reason is None:
