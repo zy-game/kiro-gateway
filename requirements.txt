@@ -11,3 +11,7 @@ PyJWT
 pytest
 pytest-asyncio
 hypothesis
+
+# Dev dependencies
+mypy
+flake8

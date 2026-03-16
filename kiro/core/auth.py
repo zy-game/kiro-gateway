@@ -1215,7 +1215,7 @@ class AccountManager:
         Returns:
             ID of the inserted log entry.
         """
-        created_at = datetime.utcnow().isoformat() + "Z"
+        created_at = datetime.now(timezone.utc).isoformat() + "Z"
         log_id = self._db.insert(
             "request_logs",
             {
@@ -1327,7 +1327,7 @@ class AccountManager:
         Returns:
             List of dicts with date, requests, input_tokens, output_tokens.
         """
-        cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat() + "Z"
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat() + "Z"
         
         rows = self._db.fetch_all(
             """
@@ -1363,7 +1363,7 @@ class AccountManager:
         Returns:
             List of dicts with date, requests, input_tokens, output_tokens.
         """
-        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat() + "Z"
         
         rows = self._db.fetch_all(
             """
@@ -1402,8 +1402,8 @@ class AccountManager:
             session_token: Unique session token.
             expires_in_days: Number of days until session expires (default 7).
         """
-        created_at = datetime.utcnow().isoformat() + "Z"
-        expires_at = (datetime.utcnow() + timedelta(days=expires_in_days)).isoformat() + "Z"
+        created_at = datetime.now(timezone.utc).isoformat() + "Z"
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=expires_in_days)).isoformat() + "Z"
         
         self._db.insert(
             "sessions",
@@ -1426,7 +1426,7 @@ class AccountManager:
         Returns:
             Username if session is valid and not expired, None otherwise.
         """
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat() + "Z"
         
         row = self._db.fetch_one(
             "SELECT username FROM sessions WHERE session_token = ? AND expires_at > ?",
@@ -1453,7 +1453,7 @@ class AccountManager:
         Returns:
             Number of sessions deleted.
         """
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat() + "Z"
         
         deleted = self._db.delete("sessions", "expires_at <= ?", (now,))
         

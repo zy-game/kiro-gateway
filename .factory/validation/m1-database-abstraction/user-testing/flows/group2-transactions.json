@@ -1,0 +1,52 @@
+{
+  "groupId": "group2-transactions",
+  "testedAt": "2026-03-16T21:22:55Z",
+  "isolation": {
+    "database": ":memory:",
+    "workingDirectory": "E:\\kiro-gateway",
+    "pythonExecutable": "py"
+  },
+  "toolsUsed": ["Python direct testing"],
+  "assertions": [
+    {
+      "id": "m1-a4",
+      "title": "Database class provides transaction support",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Test transaction commit - Insert 2 records within transaction block",
+          "expected": "Both records committed atomically when transaction completes successfully",
+          "observed": "Transaction committed successfully. Found 2 records (Alice=$100.0, Bob=$200.0) after transaction block completed."
+        },
+        {
+          "action": "Test transaction rollback - Insert record within transaction, then raise exception",
+          "expected": "Transaction rolls back on exception, inserted record not persisted",
+          "observed": "Transaction rolled back correctly. Only initial record (Alice) remained after exception. Bob was not persisted."
+        },
+        {
+          "action": "Test multiple operations - Insert, update, delete within single transaction",
+          "expected": "All operations commit atomically as a single unit",
+          "observed": "All operations committed atomically. Final state: Alice=$150.0 (inserted, updated), Bob deleted."
+        },
+        {
+          "action": "Test error handling - Call transaction() outside context manager",
+          "expected": "Raises RuntimeError with clear message about context manager requirement",
+          "observed": "Correct RuntimeError raised: 'transaction() must be called within Database context manager. Use: with Database(path) as db: with db.transaction(): ...'"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-database-abstraction/group2-transactions/test_output.txt",
+        "testScript": "test_transactions.py",
+        "logMessages": [
+          "Transaction started",
+          "Transaction committed",
+          "Transaction rolled back due to error: Simulated error to trigger rollback"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion (m1-a4): PASSED. Database transaction support works correctly with commit on success, rollback on exception, support for multiple operations, and proper error handling when used outside context manager. All 4 test scenarios passed."
+}

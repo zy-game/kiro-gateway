@@ -76,3 +76,46 @@ After all features in a milestone complete:
 - No automated browser testing (Selenium/Playwright not configured)
 - Manual testing required for UI changes
 - Limited concurrent database testing due to SQLite constraints
+
+---
+
+## Flow Validator Guidance: Database Testing
+
+### Isolation Strategy
+Each flow validator should use **in-memory SQLite databases** (`:memory:`) for complete isolation. This allows concurrent testing without file locking issues.
+
+### Testing Approach
+1. **Import and instantiate**: Verify the Database class can be imported and instantiated
+2. **Execute operations**: Call Database methods directly (no server needed)
+3. **Verify results**: Check return values and database state
+4. **Test error handling**: Trigger error conditions and verify exceptions
+
+### Shared State to Avoid
+- Do NOT use the production database file (`E:\kiro-gateway\data\accounts.db`)
+- Do NOT modify any files outside your test scope
+- Do NOT start the FastAPI server (not needed for Database class testing)
+
+### Resource Constraints
+- Max memory per validator: ~100 MB (in-memory database + test overhead)
+- Max concurrent validators: 5 (Database testing is CPU-bound, not I/O-bound)
+- Test timeout: 60 seconds per assertion group
+
+### Evidence Collection
+- Save test output to evidence files
+- Include any error messages or stack traces
+- Document which Database methods were tested
+
+### Example Test Pattern
+```python
+from kiro.core.database import Database
+
+# Create isolated test database
+db = Database(":memory:")
+
+# Test operation
+result = db.get_account(account_id=1)
+
+# Verify result
+assert result is not None
+assert result['id'] == 1
+```
