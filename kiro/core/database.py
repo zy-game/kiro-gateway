@@ -48,6 +48,7 @@ class Database:
         self._db_path = str(Path(db_path).expanduser())
         self._timeout = timeout
         self._conn: Optional[sqlite3.Connection] = None
+        self._in_transaction: bool = False
     
     def _connect(self) -> sqlite3.Connection:
         """Create a new database connection.
@@ -103,6 +104,7 @@ class Database:
             query: SQL query string.
             params: Query parameters tuple.
             commit: Whether to commit after execution (default: True).
+                   Note: Commits are skipped when inside a transaction() block.
         
         Returns:
             Cursor object with query results.
@@ -116,7 +118,9 @@ class Database:
         # Use existing connection if in context manager, otherwise create temporary one
         if self._conn:
             cursor = self._conn.execute(query, params)
-            if commit:
+            # Only commit if requested AND not inside a transaction
+            # (transaction() will handle commit/rollback)
+            if commit and not self._in_transaction:
                 self._conn.commit()
             return cursor
         else:
@@ -270,3 +274,59 @@ class Database:
         query = f"DELETE FROM {table} WHERE {where}"
         cursor = self.execute(query, where_params, commit=True)
         return cursor.rowcount
+    
+    # ------------------------------------------------------------------
+    # Transaction support
+    # ------------------------------------------------------------------
+    
+    @contextmanager
+    def transaction(self):
+        """Context manager for atomic database transactions.
+        
+        Provides transaction support with automatic commit on success
+        and rollback on exception. All operations within the transaction
+        block are executed atomically.
+        
+        Yields:
+            Database instance for chaining operations.
+        
+        Raises:
+            RuntimeError: If called outside context manager without connection.
+            sqlite3.Error: If transaction operations fail.
+        
+        Example:
+            with Database("accounts.db") as db:
+                with db.transaction():
+                    db.insert("accounts", {"type": "kiro", "priority": 10})
+                    db.update("accounts", {"usage": 5.0}, "id = ?", (1,))
+                    # Both operations commit together, or both rollback on error
+        """
+        if not self._conn:
+            raise RuntimeError(
+                "transaction() must be called within Database context manager. "
+                "Use: with Database(path) as db: with db.transaction(): ..."
+            )
+        
+        # Mark that we're in a transaction to prevent auto-commits
+        self._in_transaction = True
+        
+        try:
+            # Begin transaction (SQLite uses autocommit by default, so we need to explicitly begin)
+            self._conn.execute("BEGIN")
+            logger.debug("Transaction started")
+            
+            yield self
+            
+            # Commit transaction on success
+            self._conn.commit()
+            logger.debug("Transaction committed")
+            
+        except Exception as e:
+            # Rollback transaction on any exception
+            self._conn.rollback()
+            logger.warning(f"Transaction rolled back due to error: {e}")
+            raise
+        
+        finally:
+            # Reset transaction flag
+            self._in_transaction = False

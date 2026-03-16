@@ -361,6 +361,193 @@ class TestDatabaseErrorHandling:
                     time.sleep(0.1)
 
 
+class TestDatabaseTransactions:
+    """Test m1-a4: Database class provides transaction support."""
+    
+    @pytest.fixture
+    def test_db(self):
+        """Create a temporary database for testing."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+            db_path = tmp.name
+        
+        # Initialize database with test table
+        with Database(db_path) as db:
+            db.execute("""
+                CREATE TABLE test_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type TEXT NOT NULL,
+                    balance REAL NOT NULL DEFAULT 0
+                )
+            """)
+        
+        yield db_path
+        
+        # Cleanup
+        Path(db_path).unlink(missing_ok=True)
+    
+    def test_transaction_context_manager_exists(self, test_db):
+        """Verify transaction() method exists and is a context manager."""
+        with Database(test_db) as db:
+            assert hasattr(db, "transaction")
+            assert callable(db.transaction)
+    
+    def test_transaction_commits_on_success(self, test_db):
+        """Test that transaction commits all operations on success."""
+        with Database(test_db) as db:
+            with db.transaction():
+                db.insert("test_accounts", {"type": "kiro", "balance": 100.0})
+                db.insert("test_accounts", {"type": "glm", "balance": 50.0})
+        
+        # Verify both inserts were committed
+        with Database(test_db) as db:
+            rows = db.fetch_all("SELECT * FROM test_accounts")
+            assert len(rows) == 2
+            assert rows[0]["type"] == "kiro"
+            assert rows[0]["balance"] == 100.0
+            assert rows[1]["type"] == "glm"
+            assert rows[1]["balance"] == 50.0
+    
+    def test_transaction_rollback_on_exception(self, test_db):
+        """Test that transaction rolls back all operations on exception."""
+        # First, insert a baseline record
+        with Database(test_db) as db:
+            db.insert("test_accounts", {"type": "baseline", "balance": 10.0})
+        
+        # Attempt transaction that will fail
+        with Database(test_db) as db:
+            try:
+                with db.transaction():
+                    db.insert("test_accounts", {"type": "kiro", "balance": 100.0})
+                    db.insert("test_accounts", {"type": "glm", "balance": 50.0})
+                    # Force an error
+                    raise ValueError("Simulated error")
+            except ValueError:
+                pass  # Expected
+        
+        # Verify that transaction was rolled back - only baseline record exists
+        with Database(test_db) as db:
+            rows = db.fetch_all("SELECT * FROM test_accounts")
+            assert len(rows) == 1
+            assert rows[0]["type"] == "baseline"
+    
+    def test_transaction_rollback_on_database_error(self, test_db):
+        """Test that transaction rolls back on database constraint violation."""
+        with Database(test_db) as db:
+            try:
+                with db.transaction():
+                    db.insert("test_accounts", {"type": "kiro", "balance": 100.0})
+                    # This will fail due to syntax error in SQL
+                    db.execute("INVALID SQL SYNTAX HERE")
+            except sqlite3.Error:
+                pass  # Expected
+        
+        # Verify that transaction was rolled back - no records exist
+        with Database(test_db) as db:
+            rows = db.fetch_all("SELECT * FROM test_accounts")
+            assert len(rows) == 0
+    
+    def test_transaction_with_multiple_operations(self, test_db):
+        """Test transaction with insert, update, and delete operations."""
+        # Setup: insert initial data
+        with Database(test_db) as db:
+            id1 = db.insert("test_accounts", {"type": "kiro", "balance": 100.0})
+            id2 = db.insert("test_accounts", {"type": "glm", "balance": 50.0})
+        
+        # Transaction: update and delete
+        with Database(test_db) as db:
+            with db.transaction():
+                db.update("test_accounts", {"balance": 150.0}, "id = ?", (id1,))
+                db.delete("test_accounts", "id = ?", (id2,))
+                db.insert("test_accounts", {"type": "anthropic", "balance": 75.0})
+        
+        # Verify all operations committed
+        with Database(test_db) as db:
+            rows = db.fetch_all("SELECT * FROM test_accounts ORDER BY id")
+            assert len(rows) == 2
+            assert rows[0]["id"] == id1
+            assert rows[0]["balance"] == 150.0
+            assert rows[1]["type"] == "anthropic"
+            assert rows[1]["balance"] == 75.0
+    
+    def test_transaction_nested_not_supported(self, test_db):
+        """Test that nested transactions are not supported (SQLite limitation)."""
+        with Database(test_db) as db:
+            with db.transaction():
+                db.insert("test_accounts", {"type": "kiro", "balance": 100.0})
+                
+                # Attempting nested transaction should raise error
+                with pytest.raises(sqlite3.OperationalError):
+                    with db.transaction():
+                        db.insert("test_accounts", {"type": "glm", "balance": 50.0})
+    
+    def test_transaction_requires_context_manager(self, test_db):
+        """Test that transaction() requires Database to be used as context manager."""
+        db = Database(test_db)
+        
+        # Should raise RuntimeError when not in context manager
+        with pytest.raises(RuntimeError) as exc_info:
+            with db.transaction():
+                pass
+        
+        assert "context manager" in str(exc_info.value).lower()
+    
+    def test_transaction_isolation(self, test_db):
+        """Test that operations inside transaction are isolated until commit."""
+        # Insert baseline data
+        with Database(test_db) as db:
+            db.insert("test_accounts", {"type": "baseline", "balance": 10.0})
+        
+        # Start transaction but don't complete it yet
+        # (This test verifies the transaction flag is properly managed)
+        with Database(test_db) as db:
+            with db.transaction():
+                db.insert("test_accounts", {"type": "kiro", "balance": 100.0})
+                # Inside transaction, we should see the new record
+                rows = db.fetch_all("SELECT * FROM test_accounts")
+                assert len(rows) == 2
+        
+        # After transaction commits, verify data persists
+        with Database(test_db) as db:
+            rows = db.fetch_all("SELECT * FROM test_accounts")
+            assert len(rows) == 2
+    
+    def test_transaction_with_fetch_operations(self, test_db):
+        """Test that fetch operations work correctly inside transactions."""
+        with Database(test_db) as db:
+            with db.transaction():
+                # Insert data
+                id1 = db.insert("test_accounts", {"type": "kiro", "balance": 100.0})
+                
+                # Fetch within transaction
+                row = db.fetch_one("SELECT * FROM test_accounts WHERE id = ?", (id1,))
+                assert row is not None
+                assert row["balance"] == 100.0
+                
+                # Update based on fetched data
+                new_balance = row["balance"] + 50.0
+                db.update("test_accounts", {"balance": new_balance}, "id = ?", (id1,))
+        
+        # Verify final state
+        with Database(test_db) as db:
+            row = db.fetch_one("SELECT * FROM test_accounts WHERE id = ?", (id1,))
+            assert row["balance"] == 150.0
+    
+    def test_transaction_exception_propagates(self, test_db):
+        """Test that exceptions inside transaction are properly propagated."""
+        with Database(test_db) as db:
+            with pytest.raises(ValueError) as exc_info:
+                with db.transaction():
+                    db.insert("test_accounts", {"type": "kiro", "balance": 100.0})
+                    raise ValueError("Test exception")
+        
+        assert "Test exception" in str(exc_info.value)
+        
+        # Verify rollback occurred
+        with Database(test_db) as db:
+            rows = db.fetch_all("SELECT * FROM test_accounts")
+            assert len(rows) == 0
+
+
 class TestDatabaseIntegration:
     """Integration tests for Database class."""
     
