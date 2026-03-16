@@ -330,3 +330,206 @@ class Database:
         finally:
             # Reset transaction flag
             self._in_transaction = False
+    
+    # ------------------------------------------------------------------
+    # Account management methods
+    # ------------------------------------------------------------------
+    
+    def get_account(self, account_id: int) -> Optional[sqlite3.Row]:
+        """Fetch a single account by ID.
+        
+        Args:
+            account_id: Account primary key.
+        
+        Returns:
+            Account row or None if not found.
+        
+        Example:
+            account = db.get_account(1)
+            if account:
+                print(account["type"], account["priority"])
+        """
+        return self.fetch_one(
+            "SELECT * FROM accounts WHERE id = ?",
+            (account_id,)
+        )
+    
+    def list_accounts(
+        self, 
+        account_type: Optional[str] = None,
+        enabled_only: bool = False
+    ) -> List[sqlite3.Row]:
+        """List accounts with optional filtering.
+        
+        Args:
+            account_type: Filter by account type (e.g., "kiro", "glm").
+            enabled_only: If True, only return accounts with usage < limit.
+        
+        Returns:
+            List of account rows sorted by priority DESC.
+        
+        Example:
+            # Get all kiro accounts
+            accounts = db.list_accounts(account_type="kiro")
+            
+            # Get all available accounts
+            accounts = db.list_accounts(enabled_only=True)
+        """
+        query = "SELECT * FROM accounts"
+        params = []
+        conditions = []
+        
+        if account_type:
+            conditions.append("type = ?")
+            params.append(account_type)
+        
+        if enabled_only:
+            conditions.append("(limit_ = 0 OR usage < limit_)")
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " ORDER BY priority DESC"
+        
+        return self.fetch_all(query, tuple(params) if params else None)
+    
+    def create_account(
+        self,
+        account_type: str,
+        config: str,
+        priority: int = 0,
+        limit: int = 0,
+        usage: float = 0.0,
+        email: Optional[str] = None,
+        expires_at: Optional[str] = None,
+        next_reset_at: Optional[int] = None
+    ) -> int:
+        """Create a new account.
+        
+        Args:
+            account_type: Account type (e.g., "kiro", "glm").
+            config: JSON string of account configuration/credentials.
+            priority: Scheduling priority (higher = preferred).
+            limit: Total usage limit (0 = unlimited).
+            usage: Initial usage value.
+            email: Optional email address.
+            expires_at: Optional expiration timestamp.
+            next_reset_at: Optional next reset timestamp.
+        
+        Returns:
+            ID of the newly created account.
+        
+        Example:
+            account_id = db.create_account(
+                account_type="kiro",
+                config='{"accessToken": "..."}',
+                priority=10,
+                limit=1000
+            )
+        """
+        data = {
+            "type": account_type,
+            "config": config,
+            "priority": priority,
+            "limit_": limit,
+            "usage": usage
+        }
+        
+        if email is not None:
+            data["email"] = email
+        if expires_at is not None:
+            data["expires_at"] = expires_at
+        if next_reset_at is not None:
+            data["next_reset_at"] = next_reset_at
+        
+        return self.insert("accounts", data)
+    
+    def update_account(
+        self,
+        account_id: int,
+        **kwargs: Any
+    ) -> int:
+        """Update account fields.
+        
+        Supported kwargs: type, priority, config, limit, usage, email, 
+        expires_at, next_reset_at.
+        
+        Args:
+            account_id: Account primary key.
+            **kwargs: Fields to update.
+        
+        Returns:
+            Number of rows updated (should be 1 if account exists).
+        
+        Example:
+            db.update_account(1, priority=20, usage=50.0)
+        """
+        # Map public field names to database column names
+        field_map = {
+            "type": "type",
+            "priority": "priority",
+            "config": "config",
+            "limit": "limit_",
+            "usage": "usage",
+            "email": "email",
+            "expires_at": "expires_at",
+            "next_reset_at": "next_reset_at"
+        }
+        
+        data = {}
+        for key, value in kwargs.items():
+            if key in field_map:
+                data[field_map[key]] = value
+        
+        if not data:
+            return 0
+        
+        return self.update("accounts", data, "id = ?", (account_id,))
+    
+    def delete_account(self, account_id: int) -> int:
+        """Delete an account.
+        
+        Args:
+            account_id: Account primary key.
+        
+        Returns:
+            Number of rows deleted (1 if account existed, 0 otherwise).
+        
+        Example:
+            deleted = db.delete_account(1)
+        """
+        return self.delete("accounts", "id = ?", (account_id,))
+    
+    def increment_usage(self, account_id: int, amount: float) -> None:
+        """Atomically increment the usage field for an account.
+        
+        This operation is atomic at the SQL level, preventing race conditions
+        when multiple requests update usage concurrently.
+        
+        Args:
+            account_id: Account primary key.
+            amount: Amount to add to current usage.
+        
+        Example:
+            db.increment_usage(1, 10.5)
+        """
+        self.execute(
+            "UPDATE accounts SET usage = usage + ? WHERE id = ?",
+            (amount, account_id),
+            commit=True
+        )
+    
+    def refresh_usage(self, account_id: int, new_usage: float) -> int:
+        """Refresh (reset) the usage field for an account.
+        
+        Args:
+            account_id: Account primary key.
+            new_usage: New usage value (typically 0.0 for reset).
+        
+        Returns:
+            Number of rows updated.
+        
+        Example:
+            db.refresh_usage(1, 0.0)  # Reset usage to 0
+        """
+        return self.update("accounts", {"usage": new_usage}, "id = ?", (account_id,))
