@@ -162,16 +162,16 @@
                     },
                     body: JSON.stringify({ username, password }),
                     credentials: 'include'  // Include cookies
+                    // Let browser follow 302 redirect naturally (default behavior)
                 });
 
+                // If we get here without redirect, check for errors
                 if (!response.ok) {
                     const error = await response.json();
                     throw new Error(error.detail || 'Login failed');
                 }
-
-                // Login successful, redirect to admin page
-                sessionStorage.removeItem('redirecting');
-                window.location.href = '/admin';
+                
+                // Success - browser will have followed the redirect to /admin
             } catch (error) {
                 errorDiv.textContent = error.message;
                 errorDiv.classList.add('show');
@@ -179,20 +179,6 @@
                 loginBtn.textContent = 'Login';
             }
         }
-/*
-        // Check if already logged in
-        fetch('/auth/me', {
-            credentials: 'include'  // Include cookies
-        })
-            .then(response => {
-                if (response.ok) {
-                    sessionStorage.removeItem('redirecting');
-                    window.location.href = '/admin';
-                }
-            })
-            .catch(() => {
-                // Not logged in, stay on login page
-            });*/
     </script>
 </body>
 </html>
