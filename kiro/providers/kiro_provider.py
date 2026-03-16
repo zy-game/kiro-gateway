@@ -85,6 +85,7 @@ class KiroProvider(BaseProvider):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
+        shared_client: Optional[Any] = None,
         **kwargs
     ) -> AsyncIterator[bytes]:
         """
@@ -141,6 +142,7 @@ class KiroProvider(BaseProvider):
                 max_tokens=max_tokens,
                 system=system_prompt,
                 tools=tools,
+                shared_client=shared_client,
                 **kwargs
             ):
                 # Convert Anthropic SSE to OpenAI SSE
@@ -159,6 +161,7 @@ class KiroProvider(BaseProvider):
                 max_tokens=max_tokens,
                 system=system_prompt,
                 tools=tools,
+                shared_client=shared_client,
                 **kwargs
             ):
                 chunks.append(chunk)
@@ -201,6 +204,7 @@ class KiroProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         system: Optional[str] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
+        shared_client: Optional[Any] = None,
         **kwargs
     ) -> AsyncIterator[bytes]:
         """
@@ -272,8 +276,8 @@ class KiroProvider(BaseProvider):
         url = f"https://q.{region}.amazonaws.com/generateAssistantResponse"
         logger.debug(f"Kiro API URL: {url}")
         
-        # Create HTTP client
-        http_client = KiroHttpClient(self.auth_manager, account, shared_client=None)
+        # Create HTTP client with shared client if provided
+        http_client = KiroHttpClient(self.auth_manager, account, shared_client=shared_client)
         
         # Prepare messages for tokenizer
         messages_for_tokenizer = [msg.model_dump() if hasattr(msg, 'model_dump') else msg for msg in messages]

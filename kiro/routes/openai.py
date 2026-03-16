@@ -257,6 +257,7 @@ async def chat_completions(
     start_time = time.time()
     
     auth_manager: AccountManager = request.app.state.auth_manager
+    shared_client = request.app.state.http_client
     
     # Initialize provider router
     model_cache: ModelInfoCache = request.app.state.model_cache
@@ -286,7 +287,8 @@ async def chat_completions(
                         stream=True,
                         temperature=request_data.temperature,
                         max_tokens=request_data.max_tokens,
-                        tools=request_data.tools
+                        tools=request_data.tools,
+                        shared_client=shared_client
                     ):
                         # Collect output content for token counting
                         try:
@@ -358,7 +360,8 @@ async def chat_completions(
                 stream=False,
                 temperature=request_data.temperature,
                 max_tokens=request_data.max_tokens,
-                tools=request_data.tools
+                tools=request_data.tools,
+                shared_client=shared_client
             ):
                 chunks.append(chunk)
             
@@ -511,6 +514,7 @@ async def messages(
     
     auth_manager: AccountManager = request.app.state.auth_manager
     model_cache: ModelInfoCache = request.app.state.model_cache
+    shared_client = request.app.state.http_client
     
     # Initialize provider router
     provider_router = ProviderRouter(auth_manager, model_cache)
@@ -540,7 +544,8 @@ async def messages(
                         temperature=request_data.temperature,
                         max_tokens=request_data.max_tokens,
                         system=request_data.system,
-                        tools=request_data.tools
+                        tools=request_data.tools,
+                        shared_client=shared_client
                     ):
                         # Collect output content for token counting
                         try:
@@ -625,7 +630,8 @@ async def messages(
                 temperature=request_data.temperature,
                 max_tokens=request_data.max_tokens,
                 system=request_data.system,
-                tools=request_data.tools
+                tools=request_data.tools,
+                shared_client=shared_client
             ):
                 chunks.append(chunk)
             

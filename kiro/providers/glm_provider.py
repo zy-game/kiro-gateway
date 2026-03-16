@@ -75,6 +75,7 @@ class GLMProvider(BaseProvider):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
+        shared_client: Optional[Any] = None,
         **kwargs
     ) -> AsyncIterator[bytes]:
         """
@@ -128,8 +129,10 @@ class GLMProvider(BaseProvider):
         has_received_data = False
         
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                async with client.stream("POST", url, json=glm_data, headers=headers) as resp:
+            # Use shared client if provided, otherwise create a new one
+            if shared_client:
+                # Use shared client (no context manager needed, it's managed by app lifespan)
+                async with shared_client.stream("POST", url, json=glm_data, headers=headers) as resp:
                     # Check response status
                     if resp.status_code != 200:
                         error_text = await resp.aread()
@@ -174,6 +177,54 @@ class GLMProvider(BaseProvider):
                         has_received_data = True
                         yield response_data
                         logger.info("GLM complete response returned")
+            else:
+                # Create new client for backward compatibility
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    async with client.stream("POST", url, json=glm_data, headers=headers) as resp:
+                        # Check response status
+                        if resp.status_code != 200:
+                            error_text = await resp.aread()
+                            error_msg = error_text.decode("utf-8", errors="ignore")
+                            logger.error(f"GLM API error ({resp.status_code}): {error_msg}")
+                            
+                            # Map GLM errors to user-friendly messages
+                            if resp.status_code == 429:
+                                raise Exception("GLM rate limit exceeded. Please try again later.")
+                            elif resp.status_code == 401:
+                                raise Exception("GLM authentication failed. Check your API key.")
+                            elif resp.status_code >= 500:
+                                raise Exception(f"GLM server error ({resp.status_code}). Please try again later.")
+                            else:
+                                raise Exception(f"GLM API error ({resp.status_code}): {error_msg}")
+                        
+                        logger.debug(f"GLM API response status: {resp.status_code}")
+                        
+                        # 5. Stream response and convert to OpenAI format
+                        if stream:
+                            chunk_count = 0
+                            async for line in resp.aiter_lines():
+                                if not line:
+                                    continue
+                                
+                                has_received_data = True
+                                chunk_count += 1
+                                
+                                # Convert GLM chunk to OpenAI format
+                                openai_chunk = GLMConverter.convert_glm_chunk_to_openai(line)
+                                if openai_chunk:
+                                    yield openai_chunk.encode("utf-8")
+                            
+                            if not has_received_data:
+                                logger.error("GLM stream completed without receiving any data")
+                                raise Exception("GLM API returned empty response")
+                            
+                            logger.info(f"GLM stream completed: {chunk_count} chunks")
+                        else:
+                            # Non-streaming mode
+                            response_data = await resp.aread()
+                            has_received_data = True
+                            yield response_data
+                            logger.info("GLM complete response returned")
         
         except httpx.TimeoutException:
             logger.error(f"GLM request timeout for account {account.id}")
@@ -197,6 +248,7 @@ class GLMProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         system: Optional[str] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
+        shared_client: Optional[Any] = None,
         **kwargs
     ) -> AsyncIterator[bytes]:
         """
@@ -290,6 +342,7 @@ class GLMProvider(BaseProvider):
                 temperature=temperature,
                 max_tokens=max_tokens,
                 tools=tools,
+                shared_client=shared_client,
                 **kwargs
             ):
                 # Parse OpenAI SSE chunk
@@ -345,6 +398,7 @@ class GLMProvider(BaseProvider):
                 temperature=temperature,
                 max_tokens=max_tokens,
                 tools=tools,
+                shared_client=shared_client,
                 **kwargs
             ):
                 chunks.append(chunk)
