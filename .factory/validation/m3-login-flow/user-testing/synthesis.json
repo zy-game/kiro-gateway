@@ -1,0 +1,40 @@
+{
+  "milestone": "m3-login-flow",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 10,
+    "passed": 8,
+    "failed": 2,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "m3-a1",
+    "m3-a2",
+    "m3-a3",
+    "m3-a4",
+    "m3-a5",
+    "m3-a6",
+    "m3-a8",
+    "m3-a9"
+  ],
+  "failedAssertions": [
+    {
+      "id": "m3-a7",
+      "reason": "Login flow works without manual refresh - BLOCKED: agent-browser tool has broken playwright-core dependency, preventing browser automation testing"
+    },
+    {
+      "id": "x-a1",
+      "reason": "End-to-end request flow works - BLOCKED: agent-browser tool unavailable, cannot test complete user flow through web UI"
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented that agent-browser has a broken playwright-core dependency that prevents browser automation. The tool fails with 'Cannot find package playwright-core/index.js' error. Installation via 'agent-browser install' times out downloading Chromium (172.8 MB).",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}

@@ -1,0 +1,98 @@
+{
+  "groupId": "browser-integration",
+  "testedAt": "2026-03-17T00:21:00Z",
+  "isolation": {
+    "appUrl": "http://localhost:8000",
+    "credentials": {
+      "username": "admin",
+      "password": "admin123"
+    },
+    "browserSession": "96afb3304223"
+  },
+  "toolsUsed": ["agent-browser", "curl"],
+  "assertions": [
+    {
+      "id": "m3-a7",
+      "title": "Login flow works without manual refresh",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Attempt to start agent-browser",
+          "expected": "Browser automation tool starts successfully",
+          "observed": "agent-browser failed with module resolution error: Cannot find package 'playwright-core/index.js'"
+        },
+        {
+          "action": "Attempt agent-browser install",
+          "expected": "Chromium and dependencies install successfully",
+          "observed": "Installation timed out after 60 seconds while downloading Chromium (172.8 MB)"
+        },
+        {
+          "action": "Attempt to start FastAPI server on port 8000",
+          "expected": "Server starts and listens on localhost:8000",
+          "observed": "Server failed to start - multiple attempts with 'python main.py' and 'python -m uvicorn main:app' did not bind to port 8000"
+        },
+        {
+          "action": "Verify server with curl",
+          "expected": "HTTP response from /login endpoint",
+          "observed": "Connection refused - server not listening on port 8000"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A - browser automation tool unavailable",
+        "network": "curl failed: Connection refused on localhost:8000"
+      },
+      "issues": "Cannot test: (1) agent-browser tool has broken playwright-core dependency, (2) FastAPI server won't start on port 8000 despite multiple launch attempts"
+    },
+    {
+      "id": "x-a1",
+      "title": "End-to-end request flow works",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Attempt to access login page via browser",
+          "expected": "Login form displayed",
+          "observed": "Cannot access - agent-browser tool unavailable and server not running"
+        },
+        {
+          "action": "Attempt to test login via API",
+          "expected": "POST /auth/login returns session cookie",
+          "observed": "Cannot test - server not running on port 8000"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A - browser automation tool unavailable",
+        "network": "Server not accessible"
+      },
+      "issues": "Cannot test: Same blockers as m3-a7 - browser tool broken and server won't start"
+    }
+  ],
+  "frictions": [
+    {
+      "description": "agent-browser tool has broken dependency on playwright-core - module resolution fails with 'Cannot find package' error",
+      "resolved": false,
+      "resolution": "Attempted 'agent-browser install' but installation timed out after 60 seconds downloading Chromium",
+      "affectedAssertions": ["m3-a7", "x-a1"]
+    },
+    {
+      "description": "FastAPI server won't start on port 8000 - tried multiple launch methods (python main.py, python -m uvicorn main:app) with background processes, but netstat shows no listener on port 8000",
+      "resolved": false,
+      "resolution": "Attempted multiple server start commands with fireAndForget=true, waited 5-8 seconds between attempts, but curl consistently returns 'Connection refused'",
+      "affectedAssertions": ["m3-a7", "x-a1"]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "agent-browser tool dependency broken: Cannot find package 'C:\\Users\\15849\\.factory\\tools\\agent-browser\\dist\\node_modules\\playwright-core\\index.js' imported from browser.js",
+      "affectedAssertions": ["m3-a7", "x-a1"],
+      "quickFixAttempted": "Ran 'agent-browser install' to download Chromium, but installation timed out after 60 seconds (downloading 172.8 MB)"
+    },
+    {
+      "description": "FastAPI server not starting on port 8000 - multiple launch attempts failed, server process starts but doesn't bind to port. Background processes (PID 70684, 27092, 54300) were started but netstat shows no listener on :8000. Possible causes: missing dependencies, configuration error, or port conflict.",
+      "affectedAssertions": ["m3-a7", "x-a1"],
+      "quickFixAttempted": "Tried 3 different launch methods: (1) python main.py, (2) python main.py --port 8000, (3) python -m uvicorn main:app --host 127.0.0.1 --port 8000. All started background processes but none bound to port 8000."
+    }
+  ],
+  "summary": "Testing blocked: Cannot test either assertion due to infrastructure issues. The agent-browser tool has a broken playwright-core dependency that prevents browser automation. Additionally, the FastAPI server won't start on port 8000 despite multiple launch attempts. Both assertions (m3-a7 and x-a1) require a running server and working browser automation, so no testing could be performed. Recommend: (1) Fix agent-browser playwright-core module resolution, (2) Investigate why server won't bind to port 8000 (check for missing Python dependencies, .env configuration issues, or port conflicts)."
+}

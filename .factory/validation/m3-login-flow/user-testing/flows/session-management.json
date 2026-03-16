@@ -1,0 +1,131 @@
+{
+  "groupId": "session-management",
+  "testedAt": "2026-03-16T16:18:19Z",
+  "isolation": {
+    "appUrl": "http://localhost:8000",
+    "testCredentials": {
+      "username": "admin",
+      "password": "admin123"
+    },
+    "database": "E:\\kiro-gateway\\data\\accounts.db",
+    "testingTool": "pytest + httpx (API testing)"
+  },
+  "toolsUsed": ["httpx", "sqlite3", "pytest"],
+  "assertions": [
+    {
+      "id": "m3-a1",
+      "title": "Login endpoint sets session cookie",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST to /auth/login with valid credentials",
+          "expected": "Response includes Set-Cookie header with session_token",
+          "observed": "Response status 302, Set-Cookie header present with session_token (HttpOnly, Max-Age=604800, Path=/, SameSite=lax)"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m3-login-flow/session-management/test_output.txt",
+        "apiResponse": "Status: 302, Headers include 'set-cookie' with session_token",
+        "cookieAttributes": "HttpOnly=true, Max-Age=604800, Path=/, SameSite=lax"
+      },
+      "issues": null
+    },
+    {
+      "id": "m3-a2",
+      "title": "Login endpoint returns success response",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST to /auth/login with valid credentials",
+          "expected": "Returns 302 redirect to /admin",
+          "observed": "Response status 302 with Location header set to /admin"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m3-login-flow/session-management/test_output.txt",
+        "apiResponse": "Status: 302, Location: /admin"
+      },
+      "issues": null
+    },
+    {
+      "id": "m3-a3",
+      "title": "Session token stored in database",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Login via API",
+          "expected": "Session record created in sessions table",
+          "observed": "Session record found with correct username and future expiry"
+        },
+        {
+          "action": "Query sessions table for session_token",
+          "expected": "Record exists with username='admin' and expires_at > now",
+          "observed": "Record found: username=admin, created_at=2026-03-16T16:18:17Z, expires_at=2026-03-23T16:18:17Z (7 days)"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m3-login-flow/session-management/test_output.txt",
+        "databaseVerification": "m3-login-flow/session-management/database_verification.txt",
+        "tableSchema": "m3-login-flow/session-management/sessions_table_schema.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "m3-a8",
+      "title": "Logout clears session properly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Login to create session",
+          "expected": "Session created in database",
+          "observed": "Session record created, count=1"
+        },
+        {
+          "action": "POST to /auth/logout with session cookie",
+          "expected": "Session deleted from database, returns success",
+          "observed": "Response: {success: true, message: 'Logged out'}, session count=0"
+        },
+        {
+          "action": "GET /admin with deleted session cookie",
+          "expected": "Returns login page, not admin interface",
+          "observed": "Status 200, response contains 'Login', does not contain 'Admin Dashboard'"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m3-login-flow/session-management/test_output.txt",
+        "databaseVerification": "Sessions count before logout: 1, after logout: 0"
+      },
+      "issues": null
+    },
+    {
+      "id": "m3-a9",
+      "title": "Session expiry enforced",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create session with 1-second expiry directly in database",
+          "expected": "Session works initially",
+          "observed": "GET /admin with session returns 200 (admin page or redirect)"
+        },
+        {
+          "action": "Wait 2 seconds for session to expire",
+          "expected": "Session expires",
+          "observed": "Waited 2 seconds"
+        },
+        {
+          "action": "GET /admin with expired session",
+          "expected": "Returns login page, rejects expired session",
+          "observed": "Status 200, response contains 'Login', does not contain 'Admin Dashboard'"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m3-login-flow/session-management/test_output.txt",
+        "expiryTest": "Created session with expires_at=now+1s, verified rejection after 2s wait"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all passed. Session management API working correctly - login sets cookies, stores sessions in database, logout clears sessions, and expiry is enforced."
+}

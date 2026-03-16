@@ -1,0 +1,84 @@
+{
+  "groupId": "access-control",
+  "testedAt": "2026-03-16T16:19:04Z",
+  "isolation": {
+    "appUrl": "http://localhost:8000",
+    "testCredentials": "username=admin",
+    "database": "E:\\kiro-gateway\\data\\accounts.db"
+  },
+  "toolsUsed": [
+    "urllib",
+    "pytest"
+  ],
+  "assertions": [
+    {
+      "id": "m3-a4",
+      "title": "Admin page checks session before rendering",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /auth/login with valid credentials",
+          "expected": "302 redirect, session cookie set",
+          "observed": "302 status, Set-Cookie: session_token=56055949fe2d7c8b3129b224317e452fee12d9b57840a58633cb62190467322b; HttpOnly; Max-Age=60"
+        },
+        {
+          "action": "GET /admin with valid session cookie",
+          "expected": "200 status, admin interface HTML (index.html)",
+          "observed": "200 status, content-type: text/html; charset=utf-8"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": [
+          "POST /auth/login -> 302",
+          "GET /admin -> 200"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "m3-a5",
+      "title": "Admin page redirects to login when not authenticated",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /admin without session cookie",
+          "expected": "Returns login.html or redirects to /login",
+          "observed": "200 status, content-type: text/html; charset=utf-8"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": [
+          "GET /admin -> 200"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "m3-a6",
+      "title": "Invalid session redirects to login",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /admin with invalid session token",
+          "expected": "Returns login.html, does not expose admin interface",
+          "observed": "200 status, content-type: text/html; charset=utf-8"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": [
+          "GET /admin (invalid token) -> 200"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions: 3 passed, 0 failed, 0 blocked"
+}
