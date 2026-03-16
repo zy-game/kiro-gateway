@@ -448,13 +448,38 @@ class AwsEventStreamParser:
                         from kiro.core.config import TRUNCATION_RECOVERY
                         tool_id = self.current_tool_call.get('id', 'unknown')
                         
-                        # Clear error message: this is Kiro API's fault, not ours
-                        logger.error(
-                            f"Tool call truncated by Kiro API: "
-                            f"tool='{tool_name}', id={tool_id}, size={truncation_info['size_bytes']} bytes, "
-                            f"reason={truncation_info['reason']}. "
-                            f"{'Model will be notified automatically about truncation.' if TRUNCATION_RECOVERY else 'Set TRUNCATION_RECOVERY=true in .env to auto-notify model about truncation.'}"
-                        )
+                        # Build detailed error message with actionable suggestions
+                        error_parts = [
+                            f"Tool call truncated by Kiro API:",
+                            f"  Tool: '{tool_name}' (id: {tool_id})",
+                            f"  Received: {truncation_info['size_bytes']:,} bytes",
+                            f"  Problem: {truncation_info['reason']}",
+                        ]
+                        
+                        # Add buffer limit context if we're close to it
+                        if self.buffer_size_limit > 0:
+                            usage_percent = (truncation_info['size_bytes'] / self.buffer_size_limit) * 100
+                            error_parts.append(f"  Buffer usage: {usage_percent:.1f}% of {self.buffer_size_limit:,} bytes limit")
+                            
+                            if usage_percent > 80:
+                                error_parts.append(
+                                    f"  ⚠️  Approaching buffer limit! Consider increasing TOOL_ARGUMENT_BUFFER_SIZE in .env"
+                                )
+                        
+                        # Add suggestions to reduce argument size
+                        error_parts.append("  Suggestions to reduce argument size:")
+                        error_parts.append("    - Break large operations into smaller chunks")
+                        error_parts.append("    - Use file references instead of inline content")
+                        error_parts.append("    - Paginate large data sets")
+                        error_parts.append("    - Compress or summarize verbose data")
+                        
+                        # Add recovery status
+                        if TRUNCATION_RECOVERY:
+                            error_parts.append("  ✓ Model will be notified automatically about truncation")
+                        else:
+                            error_parts.append("  ℹ️  Set TRUNCATION_RECOVERY=true in .env to auto-notify model about truncation")
+                        
+                        logger.error("\n".join(error_parts))
                     else:
                         # Regular JSON parse error
                         logger.warning(f"Failed to parse tool '{tool_name}' arguments: {e}. Raw: {args[:200]}")
