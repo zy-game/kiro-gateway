@@ -217,7 +217,6 @@ class KiroHttpClient:
         client = await self._get_client(stream=stream)
         last_error = None
         last_error_info: Optional[NetworkErrorInfo] = None
-        hit_rate_limit = False
         
         for attempt in range(max_retries):
             try:
@@ -261,13 +260,34 @@ class KiroHttpClient:
                         )
                         break
                 
-                # 429 - rate limit, wait and retry
+                # 429 - rate limit, immediately mark account and fail
+                # The caller (Kiro IDE) will retry the request, which will be routed to a different account
                 if response.status_code == 429:
-                    hit_rate_limit = True
-                    delay = BASE_RETRY_DELAY * (2 ** attempt)
-                    logger.warning(f"Received 429, waiting {delay}s (attempt {attempt + 1}/{MAX_RETRIES})")
-                    await asyncio.sleep(delay)
-                    continue
+                    logger.warning(f"Received 429 for account {self.account.id}, marking as rate-limited and failing immediately")
+                    self.auth_manager.mark_rate_limited(self.account.id)
+                    
+                    if stream:
+                        error_event = {
+                            "type": "error",
+                            "error": {
+                                "type": "rate_limit_error",
+                                "message": f"Account {self.account.id} rate-limited. Retry to use a different account."
+                            }
+                        }
+                        class RateLimitErrorResponse:
+                            status_code = 429
+                            async def aiter_lines(self):
+                                yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+                            async def aread(self):
+                                return json.dumps({"message": f"Account {self.account.id} rate-limited. Retry to use a different account.", "reason": "RATE_LIMITED"}).encode('utf-8')
+                            async def aclose(self):
+                                pass
+                        return RateLimitErrorResponse()
+                    else:
+                        raise HTTPException(
+                            status_code=429,
+                            detail=f"Account {self.account.id} rate-limited. Retry to use a different account."
+                        )
                 
                 # 5xx - server error, wait and retry
                 if 500 <= response.status_code < 600:
@@ -316,10 +336,6 @@ class KiroHttpClient:
                     logger.error(f"{short_msg} - no more retries (attempt {attempt + 1}/{max_retries})")
                     if not error_info.is_retryable:
                         break  # Don't retry non-retryable errors
-        
-        # All attempts exhausted - mark account as rate-limited if we hit 429s
-        if hit_rate_limit:
-            self.auth_manager.mark_rate_limited(self.account.id)
         
         # All attempts exhausted - provide detailed, user-friendly error message
         if last_error_info:

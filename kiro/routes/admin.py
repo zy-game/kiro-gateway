@@ -650,3 +650,72 @@ async def sync_provider_models(request: Request, provider_type: str) -> JSONResp
         "total_existing": len(existing_models),
         "total_after": len(existing_models) + len(added),
     })
+
+
+# ------------------------------------------------------------------
+# Runtime Logs
+# ------------------------------------------------------------------
+
+@router.get("/runtime-logs", dependencies=[Depends(verify_session)])
+async def get_runtime_logs(
+    request: Request,
+    date: Optional[str] = None,
+    level: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
+    keyword: Optional[str] = None,
+) -> JSONResponse:
+    """Get runtime logs from log files.
+
+    Args:
+        date: Date string (YYYY-MM-DD). Defaults to today.
+        level: Filter by log level (DEBUG, INFO, WARNING, ERROR).
+        limit: Max lines to return (default 500).
+        offset: Number of lines to skip.
+        keyword: Filter by keyword in message.
+
+    Returns:
+        JSON with log lines and metadata.
+    """
+    import os
+    from datetime import datetime, timezone
+
+    if not date:
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
+    log_file = os.path.join(log_dir, f"{date}.log")
+
+    if not os.path.exists(log_file):
+        return JSONResponse({"lines": [], "total": 0, "date": date, "file_exists": False})
+
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            all_lines = f.readlines()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read log file: {e}")
+
+    filtered = []
+    for line in all_lines:
+        line = line.rstrip("\n")
+        if not line:
+            continue
+        if level:
+            level_upper = level.upper()
+            if f"| {level_upper}" not in line and f"|{level_upper}" not in line:
+                continue
+        if keyword and keyword.lower() not in line.lower():
+            continue
+        filtered.append(line)
+
+    total = len(filtered)
+    page = filtered[offset:offset + limit]
+
+    return JSONResponse({
+        "lines": page,
+        "total": total,
+        "date": date,
+        "offset": offset,
+        "limit": limit,
+        "file_exists": True,
+    })

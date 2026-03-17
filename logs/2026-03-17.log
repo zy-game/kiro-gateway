@@ -1,0 +1,173 @@
+2026-03-17 23:13:29 | INFO     | main:lifespan:269 - Starting application... Creating state managers.
+2026-03-17 23:13:30 | INFO     | main:lifespan:291 - Shared HTTP client created with connection pooling
+2026-03-17 23:13:30 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: data\accounts.db
+2026-03-17 23:13:30 | INFO     | main:lifespan:356 - Loading models from Kiro API...
+2026-03-17 23:13:30 | WARNING  | kiro.core.auth:_get_token_for_account:797 - Account 2: unsupported type 'glm'
+2026-03-17 23:13:30 | WARNING  | kiro.core.auth:get_access_token:837 - Account 2: could not obtain token, skipping
+2026-03-17 23:13:30 | INFO     | kiro.core.auth:_ensure_valid_token_kiro:752 - Account 3: access token expired, refreshing...
+2026-03-17 23:13:33 | INFO     | kiro.core.auth:_ensure_valid_token_kiro:762 - Account 3: token refreshed successfully
+2026-03-17 23:13:34 | INFO     | kiro.core.cache:update:76 - Updating model cache. Found 7 models.
+2026-03-17 23:13:34 | INFO     | main:lifespan:411 - Model cache ready: 8 models total
+2026-03-17 23:13:34 | INFO     | main:lifespan:420 - Model resolver initialized
+2026-03-17 23:13:34 | INFO     | main:lifespan:431 - Shutting down application...
+2026-03-17 23:13:34 | INFO     | main:lifespan:434 - Shared HTTP client closed
+2026-03-17 23:13:34 | INFO     | main:lifespan:269 - Starting application... Creating state managers.
+2026-03-17 23:13:35 | INFO     | main:lifespan:291 - Shared HTTP client created with connection pooling
+2026-03-17 23:13:35 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: data\accounts.db
+2026-03-17 23:13:35 | INFO     | main:lifespan:356 - Loading models from Kiro API...
+2026-03-17 23:13:35 | WARNING  | kiro.core.auth:_get_token_for_account:797 - Account 2: unsupported type 'glm'
+2026-03-17 23:13:35 | WARNING  | kiro.core.auth:get_access_token:837 - Account 2: could not obtain token, skipping
+2026-03-17 23:13:37 | INFO     | kiro.core.cache:update:76 - Updating model cache. Found 7 models.
+2026-03-17 23:13:37 | INFO     | main:lifespan:411 - Model cache ready: 8 models total
+2026-03-17 23:13:37 | INFO     | main:lifespan:420 - Model resolver initialized
+2026-03-17 23:13:37 | INFO     | main:lifespan:431 - Shutting down application...
+2026-03-17 23:13:37 | INFO     | main:lifespan:434 - Shared HTTP client closed
+2026-03-17 23:13:37 | INFO     | main:lifespan:269 - Starting application... Creating state managers.
+2026-03-17 23:13:37 | INFO     | main:lifespan:291 - Shared HTTP client created with connection pooling
+2026-03-17 23:13:37 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: data\accounts.db
+2026-03-17 23:13:37 | INFO     | main:lifespan:356 - Loading models from Kiro API...
+2026-03-17 23:13:37 | WARNING  | kiro.core.auth:_get_token_for_account:797 - Account 2: unsupported type 'glm'
+2026-03-17 23:13:37 | WARNING  | kiro.core.auth:get_access_token:837 - Account 2: could not obtain token, skipping
+2026-03-17 23:13:39 | INFO     | kiro.core.cache:update:76 - Updating model cache. Found 7 models.
+2026-03-17 23:13:39 | INFO     | main:lifespan:411 - Model cache ready: 8 models total
+2026-03-17 23:13:39 | INFO     | main:lifespan:420 - Model resolver initialized
+2026-03-17 23:13:39 | INFO     | main:lifespan:431 - Shutting down application...
+2026-03-17 23:13:39 | INFO     | main:lifespan:434 - Shared HTTP client closed
+2026-03-17 23:13:39 | INFO     | main:lifespan:269 - Starting application... Creating state managers.
+2026-03-17 23:13:40 | INFO     | main:lifespan:291 - Shared HTTP client created with connection pooling
+2026-03-17 23:13:40 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: data\accounts.db
+2026-03-17 23:13:40 | INFO     | main:lifespan:356 - Loading models from Kiro API...
+2026-03-17 23:13:40 | WARNING  | kiro.core.auth:_get_token_for_account:797 - Account 2: unsupported type 'glm'
+2026-03-17 23:13:40 | WARNING  | kiro.core.auth:get_access_token:837 - Account 2: could not obtain token, skipping
+2026-03-17 23:13:41 | INFO     | kiro.core.cache:update:76 - Updating model cache. Found 7 models.
+2026-03-17 23:13:41 | INFO     | main:lifespan:411 - Model cache ready: 8 models total
+2026-03-17 23:13:41 | INFO     | main:lifespan:420 - Model resolver initialized
+2026-03-17 23:13:41 | INFO     | main:lifespan:431 - Shutting down application...
+2026-03-17 23:13:41 | INFO     | main:lifespan:434 - Shared HTTP client closed
+2026-03-17 23:13:41 | INFO     | main:lifespan:269 - Starting application... Creating state managers.
+2026-03-17 23:13:42 | INFO     | main:lifespan:291 - Shared HTTP client created with connection pooling
+2026-03-17 23:13:42 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: data\accounts.db
+2026-03-17 23:13:42 | INFO     | main:lifespan:356 - Loading models from Kiro API...
+2026-03-17 23:13:42 | WARNING  | kiro.core.auth:_get_token_for_account:797 - Account 2: unsupported type 'glm'
+2026-03-17 23:13:42 | WARNING  | kiro.core.auth:get_access_token:837 - Account 2: could not obtain token, skipping
+2026-03-17 23:13:44 | INFO     | kiro.core.cache:update:76 - Updating model cache. Found 7 models.
+2026-03-17 23:13:44 | INFO     | main:lifespan:411 - Model cache ready: 8 models total
+2026-03-17 23:13:44 | INFO     | main:lifespan:420 - Model resolver initialized
+2026-03-17 23:13:44 | INFO     | main:lifespan:431 - Shutting down application...
+2026-03-17 23:13:44 | INFO     | main:lifespan:434 - Shared HTTP client closed
+2026-03-17 23:13:44 | INFO     | main:lifespan:269 - Starting application... Creating state managers.
+2026-03-17 23:13:45 | INFO     | main:lifespan:291 - Shared HTTP client created with connection pooling
+2026-03-17 23:13:45 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: data\accounts.db
+2026-03-17 23:13:45 | INFO     | main:lifespan:356 - Loading models from Kiro API...
+2026-03-17 23:13:45 | WARNING  | kiro.core.auth:_get_token_for_account:797 - Account 2: unsupported type 'glm'
+2026-03-17 23:13:45 | WARNING  | kiro.core.auth:get_access_token:837 - Account 2: could not obtain token, skipping
+2026-03-17 23:13:46 | INFO     | kiro.core.cache:update:76 - Updating model cache. Found 7 models.
+2026-03-17 23:13:46 | INFO     | main:lifespan:411 - Model cache ready: 8 models total
+2026-03-17 23:13:46 | INFO     | main:lifespan:420 - Model resolver initialized
+2026-03-17 23:13:46 | INFO     | main:lifespan:431 - Shutting down application...
+2026-03-17 23:13:46 | INFO     | main:lifespan:434 - Shared HTTP client closed
+2026-03-17 23:13:46 | INFO     | main:lifespan:269 - Starting application... Creating state managers.
+2026-03-17 23:13:47 | INFO     | main:lifespan:291 - Shared HTTP client created with connection pooling
+2026-03-17 23:13:47 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: data\accounts.db
+2026-03-17 23:13:47 | INFO     | main:lifespan:356 - Loading models from Kiro API...
+2026-03-17 23:13:47 | WARNING  | kiro.core.auth:_get_token_for_account:797 - Account 2: unsupported type 'glm'
+2026-03-17 23:13:47 | WARNING  | kiro.core.auth:get_access_token:837 - Account 2: could not obtain token, skipping
+2026-03-17 23:13:48 | INFO     | kiro.core.cache:update:76 - Updating model cache. Found 7 models.
+2026-03-17 23:13:49 | INFO     | main:lifespan:411 - Model cache ready: 8 models total
+2026-03-17 23:13:49 | INFO     | main:lifespan:420 - Model resolver initialized
+2026-03-17 23:13:49 | INFO     | main:lifespan:431 - Shutting down application...
+2026-03-17 23:13:49 | INFO     | main:lifespan:434 - Shared HTTP client closed
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmpj8q8pnch.db
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmpx5n0cxxv.db
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmpjr7qnejy.db
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmpeghf26oa.db
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmplaylnq66.db
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmp6pw_67ei.db
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmp5q5xqyrg.db
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmpk2108h6s.db
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmpnuwbkbza.db
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:358 - Added 'email' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:362 - Added 'expires_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:366 - Added 'next_reset_at' column to accounts table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:375 - Added 'duration_ms' column to request_logs table
+2026-03-17 23:13:49 | INFO     | kiro.core.auth:_init_db:377 - AccountManager initialized with database: C:\Users\15849\AppData\Local\Temp\tmprq9e7obo.db
+2026-03-17 23:13:49 | ERROR    | kiro.utils_pkg.parsers:_finalize_tool_call:482 - Tool call truncated by Kiro API:
+  Tool: 'Execute' (id: call_123)
+  Received: 20 bytes
+  Problem: missing 1 closing brace(s)
+  Buffer usage: 0.0% of 1,048,576 bytes limit
+  Suggestions to reduce argument size:
+    - Break large operations into smaller chunks
+    - Use file references instead of inline content
+    - Paginate large data sets
+    - Compress or summarize verbose data
+  ✓ Model will be notified automatically about truncation
+2026-03-17 23:13:49 | ERROR    | kiro.utils_pkg.parsers:_finalize_tool_call:482 - Tool call truncated by Kiro API:
+  Tool: 'Execute' (id: call_456)
+  Received: 52 bytes
+  Problem: unbalanced braces (2 open, 1 close)
+  Buffer usage: 0.0% of 1,048,576 bytes limit
+  Suggestions to reduce argument size:
+    - Break large operations into smaller chunks
+    - Use file references instead of inline content
+    - Paginate large data sets
+    - Compress or summarize verbose data
+  ✓ Model will be notified automatically about truncation
+2026-03-17 23:13:49 | ERROR    | kiro.utils_pkg.parsers:_finalize_tool_call:482 - Tool call truncated by Kiro API:
+  Tool: 'Execute' (id: call_789)
+  Received: 72 bytes
+  Problem: missing 1 closing brace(s)
+  Buffer usage: 0.0% of 1,048,576 bytes limit
+  Suggestions to reduce argument size:
+    - Break large operations into smaller chunks
+    - Use file references instead of inline content
+    - Paginate large data sets
+    - Compress or summarize verbose data
+  ✓ Model will be notified automatically about truncation
+2026-03-17 23:13:49 | ERROR    | kiro.utils_pkg.parsers:_finalize_tool_call:482 - Tool call truncated by Kiro API:
+  Tool: 'Execute' (id: call_e2e_123)
+  Received: 20 bytes
+  Problem: missing 1 closing brace(s)
+  Buffer usage: 0.0% of 1,048,576 bytes limit
+  Suggestions to reduce argument size:
+    - Break large operations into smaller chunks
+    - Use file references instead of inline content
+    - Paginate large data sets
+    - Compress or summarize verbose data
+  ✓ Model will be notified automatically about truncation
