@@ -49,17 +49,19 @@ def _mask_config(config: dict) -> dict:
     return masked
 
 
-def _account_to_dict(account: Any, mask: bool = True) -> dict:
+def _account_to_dict(account: Any, mask: bool = True, auth_manager: Any = None) -> dict:
     """Serialise an Account dataclass to a response dict.
 
     Args:
         account: Account instance.
         mask: Whether to mask sensitive config fields.
+        auth_manager: Optional auth manager for cooldown info.
 
     Returns:
         JSON-serialisable dict.
     """
-    return {
+    import time as _time
+    result = {
         "id": account.id,
         "type": account.type,
         "priority": account.priority,
@@ -70,6 +72,22 @@ def _account_to_dict(account: Any, mask: bool = True) -> dict:
         "expires_at": getattr(account, "expires_at", None),
         "next_reset_at": getattr(account, "next_reset_at", None),
     }
+    if auth_manager and hasattr(auth_manager, '_rate_limit_cooldowns'):
+        cooldown_data = auth_manager._rate_limit_cooldowns.get(account.id)
+        if cooldown_data:
+            cooldown_until, consecutive = cooldown_data
+            remaining = max(0, cooldown_until - _time.time())
+            result["cooldown"] = {
+                "active": remaining > 0,
+                "remaining_seconds": round(remaining),
+                "consecutive_429": consecutive,
+                "cooldown_until": round(cooldown_until),
+            }
+        else:
+            result["cooldown"] = None
+    else:
+        result["cooldown"] = None
+    return result
 
 
 # ------------------------------------------------------------------
@@ -108,7 +126,7 @@ async def list_accounts(request: Request) -> JSONResponse:
     """
     manager = request.app.state.auth_manager
     accounts = manager.list_accounts()
-    return JSONResponse([_account_to_dict(a) for a in accounts])
+    return JSONResponse([_account_to_dict(a, auth_manager=manager) for a in accounts])
 
 
 @router.post("/accounts", dependencies=[Depends(verify_session)], status_code=201)

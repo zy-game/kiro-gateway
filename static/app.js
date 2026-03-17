@@ -185,11 +185,25 @@ async function loadAccounts() {
                 const resetDate = new Date(account.next_reset_at * 1000);
                 nextResetText = resetDate.toLocaleString('zh-CN');
             }
+
+            // Cooldown info
+            let cooldownHtml = '';
+            if (account.cooldown && account.cooldown.active) {
+                const cd = account.cooldown;
+                const cdUntil = new Date(cd.cooldown_until * 1000).toLocaleTimeString('zh-CN');
+                cooldownHtml = `
+                <div class="data-field">
+                    <div class="data-field-label">冷却状态</div>
+                    <div class="data-field-value" style="color: #e74c3c; font-weight: 600;">
+                        冷却中 - 剩余 ${cd.remaining_seconds}s (连续429: ${cd.consecutive_429}次, 解除时间: ${cdUntil})
+                    </div>
+                </div>`;
+            }
             
             return `
-                <div class="data-item">
+                <div class="data-item" ${account.cooldown && account.cooldown.active ? 'style="border-left: 4px solid #e74c3c; opacity: 0.75;"' : ''}>
                     <div class="data-item-header">
-                        <div class="data-item-title">账号 #${account.id}</div>
+                        <div class="data-item-title">账号 #${account.id} ${account.cooldown && account.cooldown.active ? '<span style="color:#e74c3c;font-size:0.8em;">[ 冷却中 ]</span>' : ''}</div>
                         <div class="data-item-actions">
                             <button class="btn-sm btn-primary" onclick="editAccount(${account.id})">编辑</button>
                             <button class="btn-sm btn-secondary" onclick="refreshAccountUsage(${account.id})">刷新用量</button>
@@ -230,6 +244,7 @@ async function loadAccounts() {
                             <div class="data-field-value">${nextResetText}</div>
                         </div>
                         ` : ''}
+                        ${cooldownHtml}
                     </div>
                 </div>
             `;
