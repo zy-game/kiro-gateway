@@ -355,7 +355,9 @@ class KiroHttpClient:
                     async def aiter_lines(self):
                         yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
                     async def aread(self):
-                        return json.dumps(error_event).encode('utf-8')
+                        return json.dumps({"message": error_detail, "reason": "RETRY_EXHAUSTED"}).encode('utf-8')
+                    async def aclose(self):
+                        pass
                 return ErrorResponse()
             else:
                 raise HTTPException(
