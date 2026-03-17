@@ -5,6 +5,7 @@ Unit tests for OpenAI account management via admin API.
 Tests account validation, creation, update, and deletion for OpenAI accounts.
 """
 
+import gc
 import tempfile
 import pytest
 from pathlib import Path
@@ -34,6 +35,8 @@ class TestOpenAIAccountValidation:
             assert account.priority == 0
             assert account.limit == 0
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_create_openai_account_with_api_key_and_base_url(self):
@@ -60,6 +63,8 @@ class TestOpenAIAccountValidation:
             assert account.priority == 1
             assert account.limit == 100
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_create_openai_account_without_api_key(self):
@@ -77,6 +82,8 @@ class TestOpenAIAccountValidation:
                     limit=0
                 )
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_create_openai_account_with_empty_api_key(self):
@@ -94,6 +101,8 @@ class TestOpenAIAccountValidation:
                     limit=0
                 )
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_create_openai_account_with_none_api_key(self):
@@ -111,6 +120,8 @@ class TestOpenAIAccountValidation:
                     limit=0
                 )
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_update_openai_account_config(self):
@@ -137,6 +148,8 @@ class TestOpenAIAccountValidation:
             assert updated.config["api_key"] == "sk-new"
             assert updated.config["base_url"] == "https://new-url.com/v1"
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_update_openai_account_remove_api_key(self):
@@ -161,6 +174,8 @@ class TestOpenAIAccountValidation:
                     config={}  # Missing api_key
                 )
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_update_openai_account_priority(self):
@@ -184,6 +199,8 @@ class TestOpenAIAccountValidation:
             assert updated.priority == 5
             assert updated.config["api_key"] == "sk-test"
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_create_non_openai_account_without_validation(self):
@@ -204,6 +221,8 @@ class TestOpenAIAccountValidation:
             assert account.type == "kiro"
             assert "api_key" not in account.config
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
 
@@ -229,6 +248,8 @@ class TestOpenAIAccountCRUD:
             assert len(openai_accounts) == 2
             assert all(a.config.get("api_key") for a in openai_accounts)
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_get_openai_account(self):
@@ -250,6 +271,8 @@ class TestOpenAIAccountCRUD:
             assert retrieved.config["api_key"] == "sk-test"
             assert retrieved.config["base_url"] == "https://custom.com/v1"
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_delete_openai_account(self):
@@ -271,6 +294,8 @@ class TestOpenAIAccountCRUD:
             with pytest.raises(KeyError):
                 manager.get_account(account.id)
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
 
     def test_multiple_openai_accounts_with_different_priorities(self):
@@ -304,4 +329,6 @@ class TestOpenAIAccountCRUD:
             assert openai_accounts[0].priority >= openai_accounts[1].priority
             assert openai_accounts[1].priority >= openai_accounts[2].priority
         finally:
+            del manager  # Release database connection
+            gc.collect()  # Force garbage collection to release file handles
             Path(db_path).unlink(missing_ok=True)
