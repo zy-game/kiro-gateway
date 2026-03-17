@@ -344,6 +344,8 @@ async def chat_completions(
                         )
                     except Exception as log_error:
                         logger.error(f"Failed to log streaming request: {log_error}")
+                    finally:
+                        auth_manager.release_account(account.id)
             
             return StreamingResponse(
                 stream_with_logging(),
@@ -399,6 +401,8 @@ async def chat_completions(
                 )
             except Exception as log_error:
                 logger.error(f"Failed to log request: {log_error}")
+            finally:
+                auth_manager.release_account(account.id)
             
             return JSONResponse(
                 content=response_json,
@@ -406,8 +410,12 @@ async def chat_completions(
             )
     
     except HTTPException:
+        if 'account' in locals() and account:
+            auth_manager.release_account(account.id)
         raise
     except Exception as e:
+        if 'account' in locals() and account:
+            auth_manager.release_account(account.id)
         logger.exception(f"Error in chat_completions: {e}")
         duration_ms = int((time.time() - start_time) * 1000)
         
@@ -593,7 +601,14 @@ async def messages(
                     
                     input_tokens = count_message_tokens(messages_for_count)
                     if request_data.system:
-                        input_tokens += count_tokens(request_data.system)
+                        if isinstance(request_data.system, str):
+                            input_tokens += count_tokens(request_data.system)
+                        elif isinstance(request_data.system, list):
+                            for block in request_data.system:
+                                if isinstance(block, dict):
+                                    input_tokens += count_tokens(block.get("text", ""))
+                                elif hasattr(block, "text"):
+                                    input_tokens += count_tokens(block.text)
                     
                     # Calculate output tokens
                     output_text = ''.join(output_content)
@@ -613,6 +628,8 @@ async def messages(
                         )
                     except Exception as log_error:
                         logger.error(f"Failed to log streaming request: {log_error}")
+                    finally:
+                        auth_manager.release_account(account.id)
             
             return StreamingResponse(
                 stream_with_logging(),
@@ -655,7 +672,14 @@ async def messages(
             
             input_tokens = count_message_tokens(messages_for_count)
             if request_data.system:
-                input_tokens += count_tokens(request_data.system)
+                if isinstance(request_data.system, str):
+                    input_tokens += count_tokens(request_data.system)
+                elif isinstance(request_data.system, list):
+                    for block in request_data.system:
+                        if isinstance(block, dict):
+                            input_tokens += count_tokens(block.get("text", ""))
+                        elif hasattr(block, "text"):
+                            input_tokens += count_tokens(block.text)
             
             # Calculate output tokens from response
             output_text = ""
@@ -679,6 +703,8 @@ async def messages(
                 )
             except Exception as log_error:
                 logger.error(f"Failed to log request: {log_error}")
+            finally:
+                auth_manager.release_account(account.id)
             
             return JSONResponse(
                 content=response_json,
@@ -686,8 +712,12 @@ async def messages(
             )
     
     except HTTPException:
+        if 'account' in locals() and account:
+            auth_manager.release_account(account.id)
         raise
     except Exception as e:
+        if 'account' in locals() and account:
+            auth_manager.release_account(account.id)
         logger.exception(f"Error in messages: {e}")
         duration_ms = int((time.time() - start_time) * 1000)
         

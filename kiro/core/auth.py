@@ -329,8 +329,10 @@ class AccountManager:
         self._token_cache: Dict[int, Tuple[str, float]] = {}  # account_id -> (token, expiry_timestamp)
         self._token_cache_lock = asyncio.Lock()  # Protects _token_cache from concurrent access
         self._rate_limit_cooldowns: Dict[int, Tuple[float, int]] = {}  # account_id -> (cooldown_until_ts, consecutive_count)
+        self._in_flight: Dict[int, int] = {}  # account_id -> active_request_count
         self._COOLDOWN_BASE_SECONDS = 30
         self._COOLDOWN_MAX_SECONDS = 600
+        self._MAX_CONCURRENT_PER_ACCOUNT = 1
         self._init_db()
 
     def _init_db(self) -> None:
@@ -469,26 +471,29 @@ class AccountManager:
                 is_unlimited = account.limit == 0
                 is_available = account.usage < threshold
                 in_cooldown = self.is_in_cooldown(account.id)
+                at_capacity = self.is_at_capacity(account.id)
                 
                 logger.info(
                     f"Account #{idx+1}: id={account.id}, "
                     f"usage={account.usage:.2f}, limit={account.limit}, "
                     f"threshold={threshold}, unlimited={is_unlimited}, "
                     f"available={is_available or is_unlimited}, "
-                    f"cooldown={in_cooldown}"
+                    f"cooldown={in_cooldown}, "
+                    f"in_flight={self._in_flight.get(account.id, 0)}"
                 )
                 
-                if in_cooldown:
+                if in_cooldown or at_capacity:
                     continue
                 
                 # limit = 0 means unlimited
                 # Filter out accounts where usage >= limit - 1 to prevent quota errors
                 if is_unlimited or is_available:
+                    self.acquire_account(account.id)
                     logger.info(f"Selected account {account.id} (usage={account.usage:.2f}, limit={account.limit})")
                     return account
             
-            # All accounts exceeded limit or in cooldown
-            logger.warning(f"All accounts for type '{account_type}' have exceeded their limits or are in cooldown")
+            # All accounts exceeded limit, in cooldown, or at capacity
+            logger.warning(f"All accounts for type '{account_type}' are unavailable (limit/cooldown/capacity)")
             return None
 
     def create_account(
@@ -636,6 +641,21 @@ class AccountManager:
             logger.info(f"Account {account_id} cooldown expired, now available")
             return False
         return True
+
+    def acquire_account(self, account_id: int) -> None:
+        """Mark an account as having an active in-flight request."""
+        self._in_flight[account_id] = self._in_flight.get(account_id, 0) + 1
+
+    def release_account(self, account_id: int) -> None:
+        """Release an in-flight slot for an account."""
+        if account_id in self._in_flight:
+            self._in_flight[account_id] -= 1
+            if self._in_flight[account_id] <= 0:
+                del self._in_flight[account_id]
+
+    def is_at_capacity(self, account_id: int) -> bool:
+        """Check if an account has reached max concurrent requests."""
+        return self._in_flight.get(account_id, 0) >= self._MAX_CONCURRENT_PER_ACCOUNT
 
     def _persist_config(self, account_id: int, config: dict) -> None:
         """Write updated config JSON back to the database.
