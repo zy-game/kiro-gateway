@@ -727,6 +727,7 @@ async function loadDashboard() {
         let totalUsage = 0;
         let totalLimit = 0;
         let hasUnlimited = false;
+        let coolingCount = 0;
         
         accounts.forEach(acc => {
             totalUsage += acc.usage || 0;
@@ -735,11 +736,16 @@ async function loadDashboard() {
             } else {
                 totalLimit += acc.limit || 0;
             }
+            // Count accounts in cooldown
+            if (acc.cooldown && acc.cooldown.active) {
+                coolingCount++;
+            }
         });
         
         // Display statistics
         document.getElementById('stat-accounts').textContent = accounts.length;
         document.getElementById('stat-tokens').textContent = tokens.length;
+        document.getElementById('stat-cooling').textContent = coolingCount;
         
         // Display "used/limit" or "used/limit+"
         const usageText = hasUnlimited 
