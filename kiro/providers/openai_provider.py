@@ -94,11 +94,158 @@ class OpenAIProvider(BaseProvider):
             bytes: SSE chunks in OpenAI format
         
         Raises:
-            NotImplementedError: This is a skeleton implementation
+            ValueError: If account config is invalid
+            Exception: If API call fails
         """
-        raise NotImplementedError("chat_openai not yet implemented")
-        # Make this an async generator by using yield (unreachable but satisfies type checker)
-        yield b""  # pragma: no cover
+        import httpx
+        
+        # 1. Extract API key from account config
+        api_key = account.config.get("api_key")
+        if not api_key:
+            raise ValueError("OpenAI account missing 'api_key' in config")
+        
+        # 2. Get base_url from config or use default
+        base_url = account.config.get("base_url", self.BASE_URL)
+        
+        # 3. Build request payload
+        request_data = {
+            "model": model,
+            "messages": messages,
+            "stream": stream
+        }
+        
+        # Add optional parameters
+        if temperature is not None:
+            request_data["temperature"] = temperature
+        if max_tokens is not None:
+            request_data["max_tokens"] = max_tokens
+        if tools is not None:
+            request_data["tools"] = tools
+        
+        # Add any additional kwargs
+        request_data.update(kwargs)
+        
+        # 4. Prepare request
+        url = f"{base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        logger.info(f"OpenAI request: model={model}, stream={stream}")
+        if tools:
+            logger.debug(f"OpenAI request with {len(tools)} tools")
+        
+        # 5. Call OpenAI API
+        has_received_data = False
+        
+        try:
+            # Use shared client if provided, otherwise create a new one
+            if shared_client:
+                # Use shared client (no context manager needed, it's managed by app lifespan)
+                async with shared_client.stream("POST", url, json=request_data, headers=headers) as resp:
+                    # Check response status
+                    if resp.status_code != 200:
+                        error_text = await resp.aread()
+                        error_msg = error_text.decode("utf-8", errors="ignore")
+                        logger.error(f"OpenAI API error ({resp.status_code}): {error_msg}")
+                        
+                        # Map OpenAI errors to user-friendly messages
+                        if resp.status_code == 429:
+                            raise Exception("OpenAI rate limit exceeded. Please try again later.")
+                        elif resp.status_code == 401:
+                            raise Exception("OpenAI authentication failed. Check your API key.")
+                        elif resp.status_code >= 500:
+                            raise Exception(f"OpenAI server error ({resp.status_code}). Please try again later.")
+                        else:
+                            raise Exception(f"OpenAI API error ({resp.status_code}): {error_msg}")
+                    
+                    logger.debug(f"OpenAI API response status: {resp.status_code}")
+                    
+                    # 6. Stream response
+                    if stream:
+                        chunk_count = 0
+                        async for line in resp.aiter_lines():
+                            if not line:
+                                continue
+                            
+                            has_received_data = True
+                            chunk_count += 1
+                            
+                            # OpenAI returns SSE format: "data: {...}\n\n"
+                            # Pass through as-is (already in OpenAI format)
+                            yield line.encode("utf-8") + b"\n"
+                        
+                        if not has_received_data:
+                            logger.error("OpenAI stream completed without receiving any data")
+                            raise Exception("OpenAI API returned empty response")
+                        
+                        logger.info(f"OpenAI stream completed: {chunk_count} chunks")
+                    else:
+                        # Non-streaming mode
+                        response_data = await resp.aread()
+                        has_received_data = True
+                        yield response_data
+                        logger.info("OpenAI complete response returned")
+            else:
+                # Create new client for backward compatibility
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    async with client.stream("POST", url, json=request_data, headers=headers) as resp:
+                        # Check response status
+                        if resp.status_code != 200:
+                            error_text = await resp.aread()
+                            error_msg = error_text.decode("utf-8", errors="ignore")
+                            logger.error(f"OpenAI API error ({resp.status_code}): {error_msg}")
+                            
+                            # Map OpenAI errors to user-friendly messages
+                            if resp.status_code == 429:
+                                raise Exception("OpenAI rate limit exceeded. Please try again later.")
+                            elif resp.status_code == 401:
+                                raise Exception("OpenAI authentication failed. Check your API key.")
+                            elif resp.status_code >= 500:
+                                raise Exception(f"OpenAI server error ({resp.status_code}). Please try again later.")
+                            else:
+                                raise Exception(f"OpenAI API error ({resp.status_code}): {error_msg}")
+                        
+                        logger.debug(f"OpenAI API response status: {resp.status_code}")
+                        
+                        # 6. Stream response
+                        if stream:
+                            chunk_count = 0
+                            async for line in resp.aiter_lines():
+                                if not line:
+                                    continue
+                                
+                                has_received_data = True
+                                chunk_count += 1
+                                
+                                # OpenAI returns SSE format: "data: {...}\n\n"
+                                # Pass through as-is (already in OpenAI format)
+                                yield line.encode("utf-8") + b"\n"
+                            
+                            if not has_received_data:
+                                logger.error("OpenAI stream completed without receiving any data")
+                                raise Exception("OpenAI API returned empty response")
+                            
+                            logger.info(f"OpenAI stream completed: {chunk_count} chunks")
+                        else:
+                            # Non-streaming mode
+                            response_data = await resp.aread()
+                            has_received_data = True
+                            yield response_data
+                            logger.info("OpenAI complete response returned")
+        
+        except httpx.TimeoutException:
+            logger.error(f"OpenAI request timeout for account {account.id}")
+            raise Exception("OpenAI request timeout. Please try again.")
+        except httpx.ConnectError as e:
+            logger.error(f"OpenAI connection error: {e}")
+            raise Exception("Failed to connect to OpenAI API. Check your network connection.")
+        except Exception as e:
+            # Don't log twice if we already logged above
+            if "OpenAI API error" not in str(e) and "OpenAI rate limit" not in str(e):
+                logger.error(f"OpenAI request error for account {account.id}: {e}")
+            raise
     
     async def chat_anthropic(
         self,

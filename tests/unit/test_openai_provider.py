@@ -162,33 +162,21 @@ def test_chat_anthropic_method_exists():
 
 
 @pytest.mark.asyncio
-async def test_chat_openai_raises_not_implemented():
+async def test_chat_openai_implemented():
     """
-    Verify chat_openai raises NotImplementedError for skeleton.
+    Verify chat_openai is implemented and no longer raises NotImplementedError.
     
-    Since this is just the skeleton, the method should raise
-    NotImplementedError when called.
+    The method is now fully implemented. Detailed tests are in test_openai_chat_basic.py.
+    This test just verifies the method exists and is callable.
     """
     provider = OpenAIProvider()
     
-    # Create a mock account
-    account = Account(
-        id=1,
-        type="openai",
-        priority=0,
-        config={"api_key": "test-key"},
-        limit=0,
-        usage=0.0
-    )
+    # Verify method exists and is callable
+    assert hasattr(provider, 'chat_openai')
+    assert callable(provider.chat_openai)
     
-    # Verify it raises NotImplementedError
-    with pytest.raises(NotImplementedError):
-        async for _ in provider.chat_openai(
-            account=account,
-            model="gpt-4",
-            messages=[{"role": "user", "content": "test"}]
-        ):
-            pass
+    # Note: Detailed implementation tests with mocks are in test_openai_chat_basic.py
+    # to avoid making real HTTP requests in this basic structure test.
 
 
 @pytest.mark.asyncio
