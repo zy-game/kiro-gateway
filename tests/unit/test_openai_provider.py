@@ -180,12 +180,12 @@ async def test_chat_openai_implemented():
 
 
 @pytest.mark.asyncio
-async def test_chat_anthropic_raises_not_implemented():
+async def test_chat_anthropic_streaming_not_implemented():
     """
-    Verify chat_anthropic raises NotImplementedError for skeleton.
+    Verify chat_anthropic raises NotImplementedError for streaming mode.
     
-    Since this is just the skeleton, the method should raise
-    NotImplementedError when called.
+    Non-streaming mode (stream=False) is implemented, but streaming mode
+    (stream=True) is not yet implemented and should raise NotImplementedError.
     """
     provider = OpenAIProvider()
     
@@ -199,12 +199,13 @@ async def test_chat_anthropic_raises_not_implemented():
         usage=0.0
     )
     
-    # Verify it raises NotImplementedError
-    with pytest.raises(NotImplementedError):
+    # Verify streaming mode raises NotImplementedError
+    with pytest.raises(NotImplementedError, match="Streaming mode"):
         async for _ in provider.chat_anthropic(
             account=account,
             model="gpt-4",
-            messages=[{"role": "user", "content": "test"}]
+            messages=[{"role": "user", "content": "test"}],
+            stream=True  # Streaming not yet implemented
         ):
             pass
 
