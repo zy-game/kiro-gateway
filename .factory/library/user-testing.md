@@ -202,6 +202,33 @@ OpenAI provider testing focuses on API integration. Each flow validator should t
 - Document error messages and status codes
 - Save test output showing assertion results
 
+### Setup Requirements (CRITICAL)
+
+**Python Environment Issue Discovered (2026-03-17):**
+- The server cannot start because Python dependencies are not installed
+- `python -m pip` commands fail, suggesting Python environment issues
+- System is using Windows Store Python (C:\Users\15849\AppData\Local\Microsoft\WindowsApps\python3.exe)
+- Windows Store Python has known limitations with pip and package installation
+
+**Required Setup Steps:**
+1. **Check for virtual environment**: Look for `venv/` or `.venv/` directory in project root
+2. **Activate virtual environment if exists**: 
+   - Windows: `venv\Scripts\activate` or `.venv\Scripts\activate`
+3. **Install dependencies**: `python -m pip install -r requirements.txt`
+4. **Verify installation**: `python -c "import uvicorn; print('OK')"`
+5. **Start server**: `python main.py`
+6. **Verify server is running**: Check port 8000 is LISTENING with `netstat -an | findstr "LISTENING" | findstr ":8000"`
+
+**Alternative if pip fails:**
+- Use a different Python installation (not Windows Store Python)
+- Check if Anaconda/Miniconda is installed
+- Install Python from python.org directly
+
+**Before spawning flow validators:**
+- Ensure server is actually running and responding on http://localhost:8000
+- Test with: `curl http://localhost:8000/` or Python requests
+- If server fails to start, document the error and return setup failure
+
 ### Testing Surfaces
 
 **1. Chat Completions API (OpenAI format)**

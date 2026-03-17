@@ -1,0 +1,119 @@
+{
+  "milestone": "openai-provider-basic",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 19,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 19
+  },
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-ACCT-001",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-ACCT-002",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-ACCT-003",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-ACCT-004",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-ACCT-005",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-CHAT-001",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-CHAT-002",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-CHAT-003",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-CHAT-004",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-CHAT-005",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-CHAT-006",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-ERR-001",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-ERR-002",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-ERR-003",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-ERR-004",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-MSG-001",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-MSG-003",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-MSG-004",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    },
+    {
+      "id": "VAL-STREAM-003",
+      "blockedBy": "Server cannot start - Python dependencies not installed"
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added critical setup requirements section documenting Python environment issues and dependency installation steps",
+      "source": "setup"
+    }
+  ],
+  "setupIssues": {
+    "summary": "Server startup blocked by missing Python dependencies and Python environment issues",
+    "details": [
+      "Attempted to start FastAPI server multiple times - process exits immediately",
+      "Discovered uvicorn and other dependencies from requirements.txt are not installed",
+      "Python pip commands fail, suggesting Python environment issues",
+      "System is using Windows Store Python (C:\\Users\\15849\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe)",
+      "Windows Store Python has known limitations with pip and package installation",
+      "No virtual environment (venv/ or .venv/) found in project root",
+      "Port 8000 never enters LISTENING state - server never successfully starts"
+    ],
+    "resolutionSteps": [
+      "Check for and activate virtual environment if it exists",
+      "Install dependencies: python -m pip install -r requirements.txt",
+      "If pip fails, use alternative Python installation (not Windows Store Python)",
+      "Consider using Anaconda/Miniconda or python.org installation",
+      "Verify installation with: python -c \"import uvicorn; print('OK')\"",
+      "Start server and verify port 8000 is LISTENING before spawning validators"
+    ]
+  },
+  "previousRound": null
+}
