@@ -277,6 +277,13 @@ your_glm_api_key_here
 {
   "api_key": "your_glm_api_key_here"
 }`;
+    } else if (accountType === 'openai') {
+        configTextarea.placeholder = `{
+  "api_key": "sk-...",
+  "base_url": "https://api.openai.com/v1"
+}
+
+注意: api_key 必填, base_url 可选 (默认为官方 API)`;
     } else {
         // Default Kiro format
         configTextarea.placeholder = `{

@@ -111,6 +111,7 @@
                             <option value="">全部渠道</option>
                             <option value="kiro">Kiro</option>
                             <option value="glm">GLM</option>
+                            <option value="openai">OpenAI</option>
                         </select>
                         <button class="btn-primary" onclick="showAddModelModal()">➕ 添加模型</button>
                         <button class="btn-secondary" onclick="syncModels()">🔄 同步默认模型</button>
@@ -203,6 +204,7 @@
                     <select id="accountType" required onchange="updateConfigPlaceholder()">
                         <option value="kiro">Kiro</option>
                         <option value="glm">GLM (智谱AI)</option>
+                        <option value="openai">OpenAI</option>
                     </select>
                 </div>
 
@@ -222,7 +224,8 @@
                     <small class="form-hint">
                         <strong>Kiro:</strong> 需要完整的 JSON 配置 (accessToken, refreshToken, clientId, clientSecret, region,
                         profileArn)<br>
-                        <strong>GLM:</strong> 可以直接粘贴 API Key，或使用 JSON 格式 {"api_key": "..."}
+                        <strong>GLM:</strong> 可以直接粘贴 API Key，或使用 JSON 格式 {"api_key": "..."}<br>
+                        <strong>OpenAI:</strong> JSON 格式 {"api_key": "sk-...", "base_url": "..."} (base_url 可选)
                     </small>
                 </div>
 
@@ -270,6 +273,7 @@
                     <select id="modelProviderType" required>
                         <option value="kiro">Kiro</option>
                         <option value="glm">GLM</option>
+                        <option value="openai">OpenAI</option>
                     </select>
                 </div>
 

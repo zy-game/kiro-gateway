@@ -165,3 +165,84 @@ parser = StreamingAnthropicParser()
 # Simulate streaming chunks
 # ... test parser behavior ...
 ```
+
+---
+
+## Flow Validator Guidance: OpenAI Provider Testing
+
+### Isolation Strategy
+OpenAI provider testing focuses on API integration. Each flow validator should test the provider in isolation using mocked HTTP responses for unit tests, and real API calls for integration tests.
+
+### Testing Approach
+1. **Unit tests**: Mock httpx calls to test provider logic without hitting real API
+2. **Integration tests**: Use real API calls with test credentials
+3. **Format conversion**: Test OpenAI ↔ Anthropic format conversion
+4. **Error handling**: Test various error scenarios (401, 429, 5xx, network errors)
+5. **Streaming**: Test SSE streaming for both OpenAI and Anthropic formats
+
+### Test Credentials
+- **API Key**: `clp_3f1bddc7b9048e0bf7f12da1ab86a0ec473e917a4cda2256902740da82943899`
+- **Base URL**: Use default (https://api.openai.com/v1) or relay service URL
+- **Account Type**: `openai`
+
+### Shared State to Avoid
+- Do NOT modify existing kiro or glm providers
+- Do NOT modify core routing logic
+- Do NOT use production accounts for testing
+- Each validator should create test accounts in isolated test database
+
+### Resource Constraints
+- Max memory per validator: ~100 MB (HTTP client + test overhead)
+- Max concurrent validators: 5 (API testing is lightweight)
+- Test timeout: 60 seconds per assertion group (API calls can be slow)
+
+### Evidence Collection
+- Save HTTP request/response logs
+- Capture streaming chunks for verification
+- Document error messages and status codes
+- Save test output showing assertion results
+
+### Testing Surfaces
+
+**1. Chat Completions API (OpenAI format)**
+- Endpoint: POST /v1/chat/completions
+- Test: Basic chat, streaming, parameters, function calling, error handling
+- Evidence: network logs, response bodies, streaming chunks
+
+**2. Messages API (Anthropic format)**
+- Endpoint: POST /v1/messages
+- Test: Basic messages, streaming, system prompts, content blocks, tools
+- Evidence: network logs, SSE events, response format
+
+**3. Account Management**
+- Endpoint: POST /admin/accounts, GET /admin/accounts, etc.
+- Test: Add/edit/delete OpenAI accounts, validation, dashboard display
+- Evidence: screenshots, network logs, database state
+
+**4. Model Management**
+- Endpoint: GET /admin/models, POST /admin/models/sync/openai
+- Test: Model sync, filtering, enable/disable
+- Evidence: network logs, database state
+
+### Example Test Pattern
+```python
+import httpx
+import pytest
+
+@pytest.mark.asyncio
+async def test_openai_chat_basic():
+    """Test basic OpenAI chat completion"""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "http://localhost:8000/v1/chat/completions",
+            json={
+                "model": "gpt-3.5-turbo",
+                "messages": [{"role": "user", "content": "Hello"}]
+            },
+            headers={"Authorization": "Bearer test-api-key"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "choices" in data
+        assert len(data["choices"]) > 0
+```

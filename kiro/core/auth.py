@@ -513,8 +513,18 @@ class AccountManager:
 
         Returns:
             Newly created Account.
+            
+        Raises:
+            ValueError: If account config validation fails.
         """
         config = config or {}
+        
+        # Validate OpenAI account config
+        if type == "openai":
+            api_key = config.get("api_key")
+            if not api_key or (isinstance(api_key, str) and not api_key.strip()):
+                raise ValueError("OpenAI account: 'api_key' is required in config")
+        
         config_json = json.dumps(config, ensure_ascii=False)
         account_id = self._db.insert(
             "accounts",
@@ -543,10 +553,21 @@ class AccountManager:
 
         Raises:
             KeyError: If account not found.
-            ValueError: If no valid fields provided.
+            ValueError: If no valid fields provided or validation fails.
         """
         # Ensure account exists
-        self.get_account(account_id)
+        account = self.get_account(account_id)
+
+        # Validate OpenAI account config if updating config
+        if "config" in kwargs:
+            new_config = kwargs["config"]
+            # Determine account type (use new type if provided, otherwise existing)
+            account_type = kwargs.get("type", account.type)
+            
+            if account_type == "openai":
+                api_key = new_config.get("api_key")
+                if not api_key or (isinstance(api_key, str) and not api_key.strip()):
+                    raise ValueError("OpenAI account: 'api_key' is required in config")
 
         field_map = {
             "type": "type",

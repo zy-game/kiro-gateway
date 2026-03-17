@@ -1,8 +1,17 @@
 # Services Configuration
 
-# No external services required for this mission.
-# The application uses:
-# - SQLite database (file-based, no service needed)
-# - FastAPI server (started manually or by tests)
+commands:
+  install: python -m pip install -r requirements.txt
+  test: python -m pytest tests/ -v
+  test-unit: python -m pytest tests/unit/ -v
+  test-integration: python -m pytest tests/integration/ -v
+  typecheck: python -m mypy kiro/ --ignore-missing-imports
+  lint: python -m flake8 kiro/ --max-line-length=120
 
-services: []
+services:
+  api:
+    start: python main.py
+    stop: taskkill /F /IM python.exe /FI "WINDOWTITLE eq main.py*"
+    healthcheck: curl -sf http://localhost:8000/
+    port: 8000
+    depends_on: []
