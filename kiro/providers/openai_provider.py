@@ -74,6 +74,7 @@ class OpenAIProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         shared_client: Optional[Any] = None,
+        account_manager: Optional[Any] = None,
         **kwargs
     ) -> AsyncIterator[bytes]:
         """
@@ -88,26 +89,33 @@ class OpenAIProvider(BaseProvider):
             max_tokens: Maximum tokens to generate
             tools: Tool definitions in OpenAI format
             shared_client: Optional shared HTTP client
+            account_manager: Optional AccountManager for cooldown integration
             **kwargs: Additional parameters
         
         Yields:
             bytes: SSE chunks in OpenAI format
         
         Raises:
-            ValueError: If account config is invalid
+            ValueError: If account config is invalid or messages is empty
             Exception: If API call fails
         """
         import httpx
+        import json as json_module
         
-        # 1. Extract API key from account config
+        # 1. Validate messages array
+        if not messages or len(messages) == 0:
+            logger.error("OpenAI request failed: messages array is empty")
+            raise ValueError("Messages array cannot be empty")
+        
+        # 2. Extract API key from account config
         api_key = account.config.get("api_key")
         if not api_key:
             raise ValueError("OpenAI account missing 'api_key' in config")
         
-        # 2. Get base_url from config or use default
+        # 3. Get base_url from config or use default
         base_url = account.config.get("base_url", self.BASE_URL)
         
-        # 3. Build request payload
+        # 4. Build request payload
         request_data = {
             "model": model,
             "messages": messages,
@@ -125,7 +133,7 @@ class OpenAIProvider(BaseProvider):
         # Add any additional kwargs
         request_data.update(kwargs)
         
-        # 4. Prepare request
+        # 5. Prepare request
         url = f"{base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -136,7 +144,7 @@ class OpenAIProvider(BaseProvider):
         if tools:
             logger.debug(f"OpenAI request with {len(tools)} tools")
         
-        # 5. Call OpenAI API
+        # 6. Call OpenAI API
         has_received_data = False
         
         try:
@@ -148,17 +156,34 @@ class OpenAIProvider(BaseProvider):
                     if resp.status_code != 200:
                         error_text = await resp.aread()
                         error_msg = error_text.decode("utf-8", errors="ignore")
-                        logger.error(f"OpenAI API error ({resp.status_code}): {error_msg}")
+                        
+                        # Try to parse error details from response
+                        error_detail = error_msg
+                        try:
+                            error_json = json_module.loads(error_msg)
+                            if "error" in error_json and "message" in error_json["error"]:
+                                error_detail = error_json["error"]["message"]
+                        except:
+                            pass  # Use raw error_msg if parsing fails
+                        
+                        logger.error(f"OpenAI API error ({resp.status_code}): {error_detail}")
                         
                         # Map OpenAI errors to user-friendly messages
                         if resp.status_code == 429:
+                            # Trigger account cooldown if account_manager is provided
+                            if account_manager:
+                                account_manager.mark_rate_limited(account.id)
+                                logger.warning(f"Account {account.id} marked as rate-limited")
                             raise Exception("OpenAI rate limit exceeded. Please try again later.")
                         elif resp.status_code == 401:
                             raise Exception("OpenAI authentication failed. Check your API key.")
+                        elif resp.status_code == 400:
+                            # Include validation error details
+                            raise Exception(f"OpenAI validation error: {error_detail}")
                         elif resp.status_code >= 500:
                             raise Exception(f"OpenAI server error ({resp.status_code}). Please try again later.")
                         else:
-                            raise Exception(f"OpenAI API error ({resp.status_code}): {error_msg}")
+                            raise Exception(f"OpenAI API error ({resp.status_code}): {error_detail}")
                     
                     logger.debug(f"OpenAI API response status: {resp.status_code}")
                     
@@ -195,17 +220,34 @@ class OpenAIProvider(BaseProvider):
                         if resp.status_code != 200:
                             error_text = await resp.aread()
                             error_msg = error_text.decode("utf-8", errors="ignore")
-                            logger.error(f"OpenAI API error ({resp.status_code}): {error_msg}")
+                            
+                            # Try to parse error details from response
+                            error_detail = error_msg
+                            try:
+                                error_json = json_module.loads(error_msg)
+                                if "error" in error_json and "message" in error_json["error"]:
+                                    error_detail = error_json["error"]["message"]
+                            except:
+                                pass  # Use raw error_msg if parsing fails
+                            
+                            logger.error(f"OpenAI API error ({resp.status_code}): {error_detail}")
                             
                             # Map OpenAI errors to user-friendly messages
                             if resp.status_code == 429:
+                                # Trigger account cooldown if account_manager is provided
+                                if account_manager:
+                                    account_manager.mark_rate_limited(account.id)
+                                    logger.warning(f"Account {account.id} marked as rate-limited")
                                 raise Exception("OpenAI rate limit exceeded. Please try again later.")
                             elif resp.status_code == 401:
                                 raise Exception("OpenAI authentication failed. Check your API key.")
+                            elif resp.status_code == 400:
+                                # Include validation error details
+                                raise Exception(f"OpenAI validation error: {error_detail}")
                             elif resp.status_code >= 500:
                                 raise Exception(f"OpenAI server error ({resp.status_code}). Please try again later.")
                             else:
-                                raise Exception(f"OpenAI API error ({resp.status_code}): {error_msg}")
+                                raise Exception(f"OpenAI API error ({resp.status_code}): {error_detail}")
                         
                         logger.debug(f"OpenAI API response status: {resp.status_code}")
                         
@@ -258,6 +300,7 @@ class OpenAIProvider(BaseProvider):
         system: Optional[str] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         shared_client: Optional[Any] = None,
+        account_manager: Optional[Any] = None,
         **kwargs
     ) -> AsyncIterator[bytes]:
         """
@@ -278,6 +321,7 @@ class OpenAIProvider(BaseProvider):
             system: System prompt (Anthropic-specific)
             tools: Tool definitions in Anthropic format
             shared_client: Optional shared HTTP client
+            account_manager: Optional AccountManager for cooldown integration
             **kwargs: Additional parameters
         
         Yields:
@@ -342,6 +386,7 @@ class OpenAIProvider(BaseProvider):
             max_tokens=max_tokens,
             tools=tools,
             shared_client=shared_client,
+            account_manager=account_manager,
             **kwargs
         ):
             openai_response_chunks.append(chunk)
