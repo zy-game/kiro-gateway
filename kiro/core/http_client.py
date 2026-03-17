@@ -335,10 +335,28 @@ class KiroHttpClient:
             # Add technical details for debugging
             error_message += f"\nTechnical details: {last_error_info.technical_details}"
             
-            raise HTTPException(
-                status_code=last_error_info.suggested_http_code,
-                detail=error_message.strip()
-            )
+            if stream:
+                error_event = {
+                    "type": "error",
+                    "error": {
+                        "type": "api_error",
+                        "message": error_message.strip()
+                    }
+                }
+                class ErrorResponseClassified:
+                    status_code = last_error_info.suggested_http_code
+                    async def aiter_lines(self):
+                        yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+                    async def aread(self):
+                        return json.dumps({"message": error_message.strip(), "reason": "RETRY_EXHAUSTED"}).encode('utf-8')
+                    async def aclose(self):
+                        pass
+                return ErrorResponseClassified()
+            else:
+                raise HTTPException(
+                    status_code=last_error_info.suggested_http_code,
+                    detail=error_message.strip()
+                )
         else:
             # Fallback if no error info was captured
             error_detail = f"Request failed after {max_retries} attempts."
