@@ -328,6 +328,9 @@ class AccountManager:
         self._cursor_index: int = 0
         self._token_cache: Dict[int, Tuple[str, float]] = {}  # account_id -> (token, expiry_timestamp)
         self._token_cache_lock = asyncio.Lock()  # Protects _token_cache from concurrent access
+        self._rate_limit_cooldowns: Dict[int, Tuple[float, int]] = {}  # account_id -> (cooldown_until_ts, consecutive_count)
+        self._COOLDOWN_BASE_SECONDS = 30
+        self._COOLDOWN_MAX_SECONDS = 600
         self._init_db()
 
     def _init_db(self) -> None:
@@ -465,13 +468,18 @@ class AccountManager:
                 threshold = account.limit - 1
                 is_unlimited = account.limit == 0
                 is_available = account.usage < threshold
+                in_cooldown = self.is_in_cooldown(account.id)
                 
                 logger.info(
                     f"Account #{idx+1}: id={account.id}, "
                     f"usage={account.usage:.2f}, limit={account.limit}, "
                     f"threshold={threshold}, unlimited={is_unlimited}, "
-                    f"available={is_available or is_unlimited}"
+                    f"available={is_available or is_unlimited}, "
+                    f"cooldown={in_cooldown}"
                 )
+                
+                if in_cooldown:
+                    continue
                 
                 # limit = 0 means unlimited
                 # Filter out accounts where usage >= limit - 1 to prevent quota errors
@@ -479,8 +487,8 @@ class AccountManager:
                     logger.info(f"Selected account {account.id} (usage={account.usage:.2f}, limit={account.limit})")
                     return account
             
-            # All accounts exceeded limit
-            logger.warning(f"All accounts for type '{account_type}' have exceeded their limits")
+            # All accounts exceeded limit or in cooldown
+            logger.warning(f"All accounts for type '{account_type}' have exceeded their limits or are in cooldown")
             return None
 
     def create_account(
@@ -591,6 +599,43 @@ class AccountManager:
             (delta, account_id),
             commit=True
         )
+
+    def mark_rate_limited(self, account_id: int) -> None:
+        """Put an account into cooldown after receiving 429 rate limit.
+        
+        Uses exponential backoff: 30s, 60s, 120s, 240s, up to 600s max.
+        Consecutive 429s increase the cooldown duration.
+        """
+        now = time.time()
+        _, consecutive = self._rate_limit_cooldowns.get(account_id, (0, 0))
+        consecutive += 1
+        cooldown_seconds = min(
+            self._COOLDOWN_BASE_SECONDS * (2 ** (consecutive - 1)),
+            self._COOLDOWN_MAX_SECONDS
+        )
+        cooldown_until = now + cooldown_seconds
+        self._rate_limit_cooldowns[account_id] = (cooldown_until, consecutive)
+        logger.warning(
+            f"Account {account_id} rate-limited, cooldown {cooldown_seconds}s "
+            f"(consecutive={consecutive}, until={datetime.fromtimestamp(cooldown_until).strftime('%H:%M:%S')})"
+        )
+
+    def clear_cooldown(self, account_id: int) -> None:
+        """Clear cooldown for an account after a successful request."""
+        if account_id in self._rate_limit_cooldowns:
+            logger.info(f"Account {account_id} cooldown cleared after successful request")
+            del self._rate_limit_cooldowns[account_id]
+
+    def is_in_cooldown(self, account_id: int) -> bool:
+        """Check if an account is currently in rate-limit cooldown."""
+        if account_id not in self._rate_limit_cooldowns:
+            return False
+        cooldown_until, _ = self._rate_limit_cooldowns[account_id]
+        if time.time() >= cooldown_until:
+            del self._rate_limit_cooldowns[account_id]
+            logger.info(f"Account {account_id} cooldown expired, now available")
+            return False
+        return True
 
     def _persist_config(self, account_id: int, config: dict) -> None:
         """Write updated config JSON back to the database.

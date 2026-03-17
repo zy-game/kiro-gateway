@@ -217,6 +217,7 @@ class KiroHttpClient:
         client = await self._get_client(stream=stream)
         last_error = None
         last_error_info: Optional[NetworkErrorInfo] = None
+        hit_rate_limit = False
         
         for attempt in range(max_retries):
             try:
@@ -234,6 +235,7 @@ class KiroHttpClient:
                 
                 # Check status
                 if response.status_code == 200:
+                    self.auth_manager.clear_cooldown(self.account.id)
                     return response
                 
                 # 403 - token expired, refresh and retry
@@ -261,6 +263,7 @@ class KiroHttpClient:
                 
                 # 429 - rate limit, wait and retry
                 if response.status_code == 429:
+                    hit_rate_limit = True
                     delay = BASE_RETRY_DELAY * (2 ** attempt)
                     logger.warning(f"Received 429, waiting {delay}s (attempt {attempt + 1}/{MAX_RETRIES})")
                     await asyncio.sleep(delay)
@@ -313,6 +316,10 @@ class KiroHttpClient:
                     logger.error(f"{short_msg} - no more retries (attempt {attempt + 1}/{max_retries})")
                     if not error_info.is_retryable:
                         break  # Don't retry non-retryable errors
+        
+        # All attempts exhausted - mark account as rate-limited if we hit 429s
+        if hit_rate_limit:
+            self.auth_manager.mark_rate_limited(self.account.id)
         
         # All attempts exhausted - provide detailed, user-friendly error message
         if last_error_info:
