@@ -354,6 +354,8 @@ class KiroHttpClient:
                     status_code = 504
                     async def aiter_lines(self):
                         yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+                    async def aread(self):
+                        return json.dumps(error_event).encode('utf-8')
                 return ErrorResponse()
             else:
                 raise HTTPException(

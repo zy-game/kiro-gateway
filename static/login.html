@@ -161,17 +161,19 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ username, password }),
-                    credentials: 'include'  // Include cookies
-                    // Let browser follow 302 redirect naturally (default behavior)
+                    credentials: 'include',
+                    redirect: 'manual'
                 });
 
-                // If we get here without redirect, check for errors
+                if (response.type === 'opaqueredirect' || response.ok || response.status === 302) {
+                    window.location.href = '/admin';
+                    return;
+                }
+
                 if (!response.ok) {
                     const error = await response.json();
                     throw new Error(error.detail || 'Login failed');
                 }
-                
-                // Success - browser will have followed the redirect to /admin
             } catch (error) {
                 errorDiv.textContent = error.message;
                 errorDiv.classList.add('show');

@@ -31,6 +31,7 @@ This module formats Kiro events into Anthropic SSE format:
 Reference: https://docs.anthropic.com/en/api/messages-streaming
 """
 
+import asyncio
 import json
 import time
 import uuid
