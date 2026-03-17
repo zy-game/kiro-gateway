@@ -1031,7 +1031,7 @@ class AccountManager:
             Newly created ApiKey.
         """
         key = f"sk-{secrets.token_urlsafe(32)}"
-        created_at = datetime.now(timezone.utc).isoformat()
+        created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         key_id = self._db.insert(
             "api_keys",
@@ -1158,7 +1158,7 @@ class AccountManager:
             ValueError: If username already exists.
         """
         password_hash = self._hash_password(password)
-        created_at = datetime.now(timezone.utc).isoformat()
+        created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         try:
             user_id = self._db.insert(
@@ -1263,7 +1263,7 @@ class AccountManager:
         Returns:
             ID of the inserted log entry.
         """
-        created_at = datetime.now(timezone.utc).isoformat() + "Z"
+        created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         log_id = self._db.insert(
             "request_logs",
             {
@@ -1375,7 +1375,7 @@ class AccountManager:
         Returns:
             List of dicts with date, requests, input_tokens, output_tokens.
         """
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat() + "Z"
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
         
         rows = self._db.fetch_all(
             """
@@ -1411,7 +1411,7 @@ class AccountManager:
         Returns:
             List of dicts with date, requests, input_tokens, output_tokens.
         """
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat() + "Z"
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
         
         rows = self._db.fetch_all(
             """
@@ -1450,8 +1450,8 @@ class AccountManager:
             session_token: Unique session token.
             expires_in_days: Number of days until session expires (default 7).
         """
-        created_at = datetime.now(timezone.utc).isoformat() + "Z"
-        expires_at = (datetime.now(timezone.utc) + timedelta(days=expires_in_days)).isoformat() + "Z"
+        created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=expires_in_days)).isoformat().replace("+00:00", "Z")
         
         self._db.insert(
             "sessions",
@@ -1474,7 +1474,7 @@ class AccountManager:
         Returns:
             Username if session is valid and not expired, None otherwise.
         """
-        now = datetime.now(timezone.utc).isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         
         row = self._db.fetch_one(
             "SELECT username FROM sessions WHERE session_token = ? AND expires_at > ?",
@@ -1501,7 +1501,7 @@ class AccountManager:
         Returns:
             Number of sessions deleted.
         """
-        now = datetime.now(timezone.utc).isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         
         deleted = self._db.delete("sessions", "expires_at <= ?", (now,))
         
