@@ -17,11 +17,11 @@ from kiro.providers import BaseProvider, get_provider
 
 class ProviderRouter:
     """
-    Routes requests to appropriate providers based on model name.
+    Routes requests to appropriate providers based on model configuration.
     
     Routing rules:
-    - glm-* → GLM provider
-    - claude-*, auto → Kiro provider (default)
+    1. Look up provider_type from models table in database
+    2. Fall back to "kiro" if model not found in database
     
     Also handles account selection for the chosen provider.
     """
@@ -31,7 +31,7 @@ class ProviderRouter:
         Initialize router.
         
         Args:
-            account_manager: Account manager for retrieving accounts
+            account_manager: Account manager for retrieving accounts and model lookups
             model_cache: Model info cache (required for Kiro provider)
         """
         self.account_manager = account_manager
@@ -41,20 +41,21 @@ class ProviderRouter:
     
     def _get_provider_type(self, model: str) -> str:
         """
-        Determine provider type from model name.
+        Determine provider type from models table configuration.
+        
+        Falls back to "kiro" if model is not configured in the database.
         
         Args:
             model: Model name
         
         Returns:
-            Provider type ("kiro", "glm")
+            Provider type (e.g., "kiro", "glm", "openai")
         """
-        # GLM models
-        if model.startswith("glm-"):
-            return "glm"
+        provider_type = self.account_manager.get_provider_type_for_model(model)
+        if provider_type:
+            return provider_type
         
-        # Default to Kiro for all other models
-        # (claude-*, auto, etc.)
+        # Default to Kiro for unconfigured models
         return "kiro"
     
     def _get_provider_instance(self, provider_type: str) -> BaseProvider:

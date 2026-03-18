@@ -1752,6 +1752,21 @@ class AccountManager:
         
         return [row["model_id"] for row in rows]
 
+    def get_provider_type_for_model(self, model_id: str) -> Optional[str]:
+        """Get provider type for a model by its model_id string.
+
+        Args:
+            model_id: Model identifier (e.g., 'gpt-5.3-codex', 'claude-sonnet-4').
+
+        Returns:
+            Provider type string (e.g., 'kiro', 'glm', 'openai') or None if not found.
+        """
+        row = self._db.fetch_one(
+            "SELECT provider_type FROM models WHERE model_id = ? AND enabled = 1 ORDER BY priority DESC LIMIT 1",
+            (model_id,)
+        )
+        return row["provider_type"] if row else None
+
     def count_models(self) -> int:
         """Count total number of models in database.
 
