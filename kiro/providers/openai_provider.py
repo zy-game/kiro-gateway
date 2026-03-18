@@ -348,19 +348,22 @@ class OpenAIProvider(BaseProvider):
         
         # Convert Anthropic messages to OpenAI format
         for msg in messages:
-            openai_msg = {
-                "role": msg["role"]
-            }
+            # Support both dict and AnthropicMessage (Pydantic model)
+            role = msg.role if hasattr(msg, "role") else msg["role"]
+            content = msg.content if hasattr(msg, "content") else msg.get("content", "")
             
-            # Handle content: can be string or array of content blocks
-            content = msg.get("content", "")
+            openai_msg = {"role": role}
+            
             if isinstance(content, str):
                 openai_msg["content"] = content
             elif isinstance(content, list):
                 text_parts = []
                 for block in content:
-                    if block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
+                    # Support both dict and Pydantic content blocks
+                    block_type = block.type if hasattr(block, "type") else block.get("type")
+                    if block_type == "text":
+                        block_text = block.text if hasattr(block, "text") else block.get("text", "")
+                        text_parts.append(block_text)
                 openai_msg["content"] = "".join(text_parts)
             else:
                 openai_msg["content"] = str(content)
