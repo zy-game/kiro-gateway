@@ -89,11 +89,6 @@
                     </div>
 
                     <!-- Charts -->
-                    <div class="chart-container" id="chartContainer">
-                        <h3>📈 请求统计</h3>
-                        <canvas id="hourlyChart" height="80"></canvas>
-                    </div>
-
                     <div class="chart-container" id="tokenChartContainer">
                         <h3>🔢 Token 使用统计</h3>
                         <canvas id="tokenChart" height="80"></canvas>
@@ -106,6 +101,9 @@
                 <div class="page-header">
                     <h1>🎯 模型管理</h1>
                     <div class="page-actions">
+                        <button class="btn-view-toggle" onclick="toggleViewMode('models')" title="切换显示模式">
+                            <span id="modelsViewIcon">📋</span>
+                        </button>
                         <select id="filterProvider" onchange="loadModels(this.value)"
                             style="padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; margin-right: 8px;">
                             <option value="">全部渠道</option>
@@ -129,6 +127,9 @@
                 <div class="page-header">
                     <h1>👤 账号列表</h1>
                     <div class="page-actions">
+                        <button class="btn-view-toggle" onclick="toggleViewMode('accounts')" title="切换显示模式">
+                            <span id="accountsViewIcon">📋</span>
+                        </button>
                         <button class="btn-primary" onclick="showAddAccountModal()">➕ 添加账号</button>
                         <button class="btn-secondary" onclick="loadAccounts()">🔄 刷新</button>
                     </div>
@@ -145,6 +146,9 @@
                 <div class="page-header">
                     <h1>🔑 令牌列表</h1>
                     <div class="page-actions">
+                        <button class="btn-view-toggle" onclick="toggleViewMode('tokens')" title="切换显示模式">
+                            <span id="tokensViewIcon">📋</span>
+                        </button>
                         <button class="btn-primary" onclick="showGenerateTokenModal()">➕ 生成令牌</button>
                         <button class="btn-secondary" onclick="loadTokens()">🔄 刷新</button>
                     </div>

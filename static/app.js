@@ -143,6 +143,41 @@ function showNotification(message, type = 'success') {
     }, 3000);
 }
 
+// ==================== View Mode Management ====================
+function getViewMode(page) {
+    return localStorage.getItem(`viewMode_${page}`) || 'card';
+}
+
+function setViewMode(page, mode) {
+    localStorage.setItem(`viewMode_${page}`, mode);
+}
+
+function toggleViewMode(page) {
+    const currentMode = getViewMode(page);
+    const newMode = currentMode === 'card' ? 'table' : 'card';
+    setViewMode(page, newMode);
+    
+    // Update icon
+    const icon = document.getElementById(`${page}ViewIcon`);
+    if (icon) {
+        icon.textContent = newMode === 'card' ? '📋' : '🗂️';
+    }
+    
+    // Reload the page data
+    switch(page) {
+        case 'models':
+            const filterProvider = document.getElementById('filterProvider').value;
+            loadModels(filterProvider || null);
+            break;
+        case 'accounts':
+            loadAccounts();
+            break;
+        case 'tokens':
+            loadTokens();
+            break;
+    }
+}
+
 // ==================== Dashboard ====================
 async function loadDashboard() {
     try {
@@ -172,6 +207,19 @@ async function loadAccounts() {
         
         if (accounts.length === 0) {
             container.innerHTML = '<div class="loading">暂无账号</div>';
+            return;
+        }
+        
+        // Update view icon
+        const viewMode = getViewMode('accounts');
+        const icon = document.getElementById('accountsViewIcon');
+        if (icon) {
+            icon.textContent = viewMode === 'card' ? '📋' : '🗂️';
+        }
+        
+        // Render based on view mode
+        if (viewMode === 'table') {
+            renderAccountsTable(accounts, container);
             return;
         }
         
@@ -393,6 +441,52 @@ async function refreshAccountUsage(id) {
     }
 }
 
+function renderAccountsTable(accounts, container) {
+    const html = `
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>类型</th>
+                    <th>优先级</th>
+                    <th>邮箱</th>
+                    <th>用量</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${accounts.map(account => {
+                    const usagePercent = account.limit > 0 ? (account.usage / account.limit * 100) : 0;
+                    const usageText = account.limit > 0 ? `${account.usage.toFixed(2)} / ${account.limit}` : `${account.usage.toFixed(2)}`;
+                    const statusText = account.cooldown && account.cooldown.active ? '冷却中' : '正常';
+                    const statusColor = account.cooldown && account.cooldown.active ? '#e74c3c' : '#3fb950';
+                    
+                    return `
+                        <tr>
+                            <td>${account.id}</td>
+                            <td>${account.type}</td>
+                            <td>${account.priority}</td>
+                            <td>${account.email || '-'}</td>
+                            <td>
+                                ${usageText}
+                                ${account.limit > 0 ? `<div class="progress-bar" style="margin-top: 4px;"><div class="progress-fill" style="width: ${Math.min(usagePercent, 100)}%"></div></div>` : ''}
+                            </td>
+                            <td><span style="color: ${statusColor}; font-weight: 600;">${statusText}</span></td>
+                            <td>
+                                <button class="btn-sm btn-primary" onclick="editAccount(${account.id})">编辑</button>
+                                <button class="btn-sm btn-secondary" onclick="refreshAccountUsage(${account.id})">刷新</button>
+                                <button class="btn-sm btn-danger" onclick="deleteAccount(${account.id})">删除</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+    container.innerHTML = html;
+}
+
 // ==================== Tokens ====================
 async function loadTokens() {
     const container = document.getElementById('tokensList');
@@ -403,6 +497,19 @@ async function loadTokens() {
         
         if (tokens.length === 0) {
             container.innerHTML = '<div class="loading">暂无令牌</div>';
+            return;
+        }
+        
+        // Update view icon
+        const viewMode = getViewMode('tokens');
+        const icon = document.getElementById('tokensViewIcon');
+        if (icon) {
+            icon.textContent = viewMode === 'card' ? '📋' : '🗂️';
+        }
+        
+        // Render based on view mode
+        if (viewMode === 'table') {
+            renderTokensTable(tokens, container);
             return;
         }
         
@@ -514,6 +621,35 @@ function fallbackCopyToken(token) {
     document.body.removeChild(textarea);
 }
 
+function renderTokensTable(tokens, container) {
+    const html = `
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>密钥</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${tokens.map(token => `
+                    <tr>
+                        <td>${token.name}</td>
+                        <td style="font-family: monospace;">${token.key}</td>
+                        <td>${new Date(token.created_at).toLocaleString('zh-CN')}</td>
+                        <td>
+                            <button class="btn-sm btn-primary" onclick='copyToken(\`${token.full_key}\`)'>复制</button>
+                            <button class="btn-sm btn-danger" onclick="deleteToken(${token.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    container.innerHTML = html;
+}
+
 // ==================== Models ====================
 async function loadModels(providerType = null) {
     const container = document.getElementById('modelsList');
@@ -530,7 +666,20 @@ async function loadModels(providerType = null) {
             return;
         }
         
-        // Display all models in a flat list
+        // Update view icon
+        const viewMode = getViewMode('models');
+        const icon = document.getElementById('modelsViewIcon');
+        if (icon) {
+            icon.textContent = viewMode === 'card' ? '📋' : '🗂️';
+        }
+        
+        // Render based on view mode
+        if (viewMode === 'table') {
+            renderModelsTable(models, container);
+            return;
+        }
+        
+        // Display all models in a flat list (card view)
         let html = '';
         models.forEach(model => {
             const statusBadge = model.enabled 
@@ -719,7 +868,6 @@ async function syncModels() {
 }
 
 // ==================== Dashboard & Charts ====================
-let hourlyChart = null;
 let tokenChart = null;
 
 async function loadDashboard() {
@@ -760,64 +908,11 @@ async function loadDashboard() {
             : `${totalUsage.toFixed(2)} / ${totalLimit.toFixed(2)}`;
         document.getElementById('stat-usage').textContent = usageText;
         
-        // Render charts (fixed 30 days)
-        renderDailyChart(stats);
+        // Render token chart only
         renderTokenChart(stats);
     } catch (error) {
         console.error('Failed to load dashboard:', error);
     }
-}
-
-function renderDailyChart(stats) {
-    const ctx = document.getElementById('hourlyChart');
-    if (!ctx) return;
-    
-    // Destroy existing chart
-    if (hourlyChart) {
-        hourlyChart.destroy();
-    }
-    
-    // Format date labels: MM/DD
-    const labels = stats.map(s => {
-        const date = new Date(s.day);
-        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit' });
-    });
-    const data = stats.map(s => s.requests);
-    
-    hourlyChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: '请求数',
-                data: data,
-                borderColor: '#58a6ff',
-                backgroundColor: 'rgba(88, 166, 255, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    labels: { color: '#e6edf3' }
-                }
-            },
-            scales: {
-                x: {
-                    ticks: { color: '#8b949e' },
-                    grid: { color: '#30363d' }
-                },
-                y: {
-                    ticks: { color: '#8b949e' },
-                    grid: { color: '#30363d' },
-                    beginAtZero: true
-                }
-            }
-        }
-    });
 }
 
 function renderTokenChart(stats) {
