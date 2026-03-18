@@ -867,6 +867,56 @@ async function syncModels() {
     }
 }
 
+function renderModelsTable(models, container) {
+    const html = `
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>渠道</th>
+                    <th>模型 ID</th>
+                    <th>显示名称</th>
+                    <th>优先级</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${models.map(model => {
+                    const providerColors = {
+                        'kiro': '#58a6ff',
+                        'glm': '#3fb950',
+                        'openai': '#f97316'
+                    };
+                    const providerColor = providerColors[model.provider_type] || '#8b949e';
+                    const statusColor = model.enabled ? '#3fb950' : '#6e7681';
+                    const statusText = model.enabled ? '启用' : '禁用';
+                    
+                    return `
+                        <tr>
+                            <td><span style="background: ${providerColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; text-transform: uppercase;">${model.provider_type}</span></td>
+                            <td style="font-family: monospace;">${model.model_id}</td>
+                            <td>${model.display_name || '-'}</td>
+                            <td>${model.priority}</td>
+                            <td><span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${statusText}</span></td>
+                            <td>${new Date(model.created_at).toLocaleString('zh-CN')}</td>
+                            <td>
+                                <button class="btn-sm ${model.enabled ? 'btn-secondary' : 'btn-primary'}" 
+                                        onclick="toggleModelEnabled(${model.id}, ${!model.enabled})">
+                                    ${model.enabled ? '禁用' : '启用'}
+                                </button>
+                                <button class="btn-sm btn-primary" onclick="editModel(${model.id})">编辑</button>
+                                <button class="btn-sm btn-danger" onclick="deleteModel(${model.id})">删除</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+    container.innerHTML = html;
+}
+
 // ==================== Dashboard & Charts ====================
 let tokenChart = null;
 

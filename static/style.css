@@ -242,6 +242,10 @@ body {
     gap: 20px;
 }
 
+.data-list:has(.data-table) {
+    display: block;
+}
+
 .data-item {
     background: #0d1117;
     padding: 20px;
