@@ -334,10 +334,6 @@ class OpenAIProvider(BaseProvider):
         """
         import json
         
-        # Currently only non-streaming mode is supported
-        if stream:
-            raise NotImplementedError("Streaming mode for chat_anthropic not yet implemented")
-        
         logger.info(f"OpenAI chat_anthropic request: model={model}, stream={stream}")
         
         # 1. Convert Anthropic format to OpenAI format
@@ -359,10 +355,8 @@ class OpenAIProvider(BaseProvider):
             # Handle content: can be string or array of content blocks
             content = msg.get("content", "")
             if isinstance(content, str):
-                # Simple string content - pass through
                 openai_msg["content"] = content
             elif isinstance(content, list):
-                # Content blocks - extract text and concatenate
                 text_parts = []
                 for block in content:
                     if block.get("type") == "text":
@@ -375,51 +369,147 @@ class OpenAIProvider(BaseProvider):
         
         logger.debug(f"Converted {len(messages)} Anthropic messages to {len(openai_messages)} OpenAI messages")
         
-        # 2. Call chat_openai with converted format
-        openai_response_chunks = []
-        async for chunk in self.chat_openai(
-            account=account,
-            model=model,
-            messages=openai_messages,
-            stream=False,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            tools=tools,
-            shared_client=shared_client,
-            account_manager=account_manager,
-            **kwargs
-        ):
-            openai_response_chunks.append(chunk)
-        
-        # Parse OpenAI response
-        openai_response_bytes = b"".join(openai_response_chunks)
-        openai_response = json.loads(openai_response_bytes.decode("utf-8"))
-        
-        logger.debug(f"Received OpenAI response: {openai_response.get('id')}")
-        
-        # 3. Convert OpenAI response to Anthropic format
-        choice = openai_response.get("choices", [{}])[0]
-        message = choice.get("message", {})
-        
-        anthropic_response = {
-            "id": openai_response.get("id", ""),
-            "type": "message",
-            "role": message.get("role", "assistant"),
-            "model": openai_response.get("model", model),
-            "content": [
-                {
-                    "type": "text",
-                    "text": message.get("content", "")
+        if stream:
+            # Streaming mode: call OpenAI with streaming, convert to Anthropic SSE
+            from kiro.streaming.kiro import format_sse_event, generate_message_id
+            
+            message_id = generate_message_id()
+            
+            # Send message_start
+            yield format_sse_event("message_start", {
+                "type": "message_start",
+                "message": {
+                    "id": message_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": model,
+                    "stop_reason": None,
+                    "stop_sequence": None,
+                    "usage": {"input_tokens": 0, "output_tokens": 0}
                 }
-            ],
-            "stop_reason": choice.get("finish_reason", "end_turn"),
-            "usage": {
-                "input_tokens": openai_response.get("usage", {}).get("prompt_tokens", 0),
-                "output_tokens": openai_response.get("usage", {}).get("completion_tokens", 0)
+            }).encode("utf-8")
+            
+            # Send content_block_start
+            yield format_sse_event("content_block_start", {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "text", "text": ""}
+            }).encode("utf-8")
+            
+            # Stream OpenAI chunks and convert to Anthropic deltas
+            finish_reason = "end_turn"
+            input_tokens = 0
+            output_tokens = 0
+            
+            async for chunk in self.chat_openai(
+                account=account,
+                model=model,
+                messages=openai_messages,
+                stream=True,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+                shared_client=shared_client,
+                account_manager=account_manager,
+                **kwargs
+            ):
+                line = chunk.decode("utf-8", errors="ignore").strip()
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    continue
+                
+                try:
+                    data = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+                
+                # Extract usage if present
+                if "usage" in data:
+                    input_tokens = data["usage"].get("prompt_tokens", input_tokens)
+                    output_tokens = data["usage"].get("completion_tokens", output_tokens)
+                
+                choices = data.get("choices", [])
+                if not choices:
+                    continue
+                
+                delta = choices[0].get("delta", {})
+                fr = choices[0].get("finish_reason")
+                if fr:
+                    finish_reason = "end_turn" if fr == "stop" else fr
+                
+                content = delta.get("content")
+                if content:
+                    yield format_sse_event("content_block_delta", {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {"type": "text_delta", "text": content}
+                    }).encode("utf-8")
+            
+            # Send content_block_stop
+            yield format_sse_event("content_block_stop", {
+                "type": "content_block_stop",
+                "index": 0
+            }).encode("utf-8")
+            
+            # Send message_delta
+            yield format_sse_event("message_delta", {
+                "type": "message_delta",
+                "delta": {"stop_reason": finish_reason, "stop_sequence": None},
+                "usage": {"output_tokens": output_tokens}
+            }).encode("utf-8")
+            
+            # Send message_stop
+            yield format_sse_event("message_stop", {
+                "type": "message_stop"
+            }).encode("utf-8")
+            
+            logger.info(f"OpenAI→Anthropic stream completed: input={input_tokens}, output={output_tokens}")
+        
+        else:
+            # Non-streaming mode
+            openai_response_chunks = []
+            async for chunk in self.chat_openai(
+                account=account,
+                model=model,
+                messages=openai_messages,
+                stream=False,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+                shared_client=shared_client,
+                account_manager=account_manager,
+                **kwargs
+            ):
+                openai_response_chunks.append(chunk)
+            
+            openai_response_bytes = b"".join(openai_response_chunks)
+            openai_response = json.loads(openai_response_bytes.decode("utf-8"))
+            
+            logger.debug(f"Received OpenAI response: {openai_response.get('id')}")
+            
+            choice = openai_response.get("choices", [{}])[0]
+            message = choice.get("message", {})
+            
+            anthropic_response = {
+                "id": openai_response.get("id", ""),
+                "type": "message",
+                "role": message.get("role", "assistant"),
+                "model": openai_response.get("model", model),
+                "content": [
+                    {
+                        "type": "text",
+                        "text": message.get("content", "")
+                    }
+                ],
+                "stop_reason": choice.get("finish_reason", "end_turn"),
+                "usage": {
+                    "input_tokens": openai_response.get("usage", {}).get("prompt_tokens", 0),
+                    "output_tokens": openai_response.get("usage", {}).get("completion_tokens", 0)
+                }
             }
-        }
-        
-        logger.info(f"Converted OpenAI response to Anthropic format")
-        
-        # Yield the complete Anthropic response
-        yield json.dumps(anthropic_response).encode("utf-8")
+            
+            logger.info(f"Converted OpenAI response to Anthropic format")
+            yield json.dumps(anthropic_response).encode("utf-8")
