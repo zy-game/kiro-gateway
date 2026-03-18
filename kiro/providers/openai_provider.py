@@ -115,10 +115,34 @@ class OpenAIProvider(BaseProvider):
         # 3. Get base_url from config or use default
         base_url = account.config.get("base_url", self.BASE_URL)
         
-        # 4. Build request payload
+        # 4. Serialize messages to plain dicts (handle Pydantic objects)
+        serialized_messages = []
+        for msg in messages:
+            if hasattr(msg, "model_dump"):
+                serialized_messages.append(msg.model_dump(exclude_none=True))
+            elif hasattr(msg, "dict"):
+                serialized_messages.append(msg.dict(exclude_none=True))
+            elif isinstance(msg, dict):
+                # Deep-serialize any nested Pydantic objects in content
+                m = dict(msg)
+                if isinstance(m.get("content"), list):
+                    new_content = []
+                    for block in m["content"]:
+                        if hasattr(block, "model_dump"):
+                            new_content.append(block.model_dump(exclude_none=True))
+                        elif hasattr(block, "dict"):
+                            new_content.append(block.dict(exclude_none=True))
+                        else:
+                            new_content.append(block)
+                    m["content"] = new_content
+                serialized_messages.append(m)
+            else:
+                serialized_messages.append(msg)
+        
+        # 5. Build request payload
         request_data = {
             "model": model,
-            "messages": messages,
+            "messages": serialized_messages,
             "stream": stream
         }
         
