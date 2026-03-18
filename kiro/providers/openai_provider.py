@@ -341,9 +341,22 @@ class OpenAIProvider(BaseProvider):
         
         # Add system message if provided
         if system:
+            # system can be a string, list of SystemContentBlock, or list of dicts
+            if isinstance(system, str):
+                system_text = system
+            elif isinstance(system, list):
+                text_parts = []
+                for block in system:
+                    if hasattr(block, "text"):
+                        text_parts.append(block.text)
+                    elif isinstance(block, dict) and block.get("type") == "text":
+                        text_parts.append(block.get("text", ""))
+                system_text = "".join(text_parts)
+            else:
+                system_text = str(system)
             openai_messages.append({
                 "role": "system",
-                "content": system
+                "content": system_text
             })
         
         # Convert Anthropic messages to OpenAI format
