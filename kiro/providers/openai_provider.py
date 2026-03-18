@@ -134,7 +134,7 @@ class OpenAIProvider(BaseProvider):
         request_data.update(kwargs)
         
         # 5. Prepare request
-        url = f"{base_url}/chat/completions"
+        url = f"{base_url}"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
