@@ -39,6 +39,19 @@ class OpenAIProvider(BaseProvider):
         """Initialize OpenAI provider."""
         super().__init__("openai")
     
+    @staticmethod
+    def _serialize(obj):
+        """Recursively serialize Pydantic objects to JSON-compatible dicts."""
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump(exclude_none=True)
+        elif hasattr(obj, "dict"):
+            return obj.dict(exclude_none=True)
+        elif isinstance(obj, list):
+            return [OpenAIProvider._serialize(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {k: OpenAIProvider._serialize(v) for k, v in obj.items()}
+        return obj
+    
     def get_supported_models(self, db_manager=None) -> List[str]:
         """
         Get list of supported OpenAI models.
@@ -116,28 +129,7 @@ class OpenAIProvider(BaseProvider):
         base_url = account.config.get("base_url", self.BASE_URL)
         
         # 4. Serialize messages to plain dicts (handle Pydantic objects)
-        serialized_messages = []
-        for msg in messages:
-            if hasattr(msg, "model_dump"):
-                serialized_messages.append(msg.model_dump(exclude_none=True))
-            elif hasattr(msg, "dict"):
-                serialized_messages.append(msg.dict(exclude_none=True))
-            elif isinstance(msg, dict):
-                # Deep-serialize any nested Pydantic objects in content
-                m = dict(msg)
-                if isinstance(m.get("content"), list):
-                    new_content = []
-                    for block in m["content"]:
-                        if hasattr(block, "model_dump"):
-                            new_content.append(block.model_dump(exclude_none=True))
-                        elif hasattr(block, "dict"):
-                            new_content.append(block.dict(exclude_none=True))
-                        else:
-                            new_content.append(block)
-                    m["content"] = new_content
-                serialized_messages.append(m)
-            else:
-                serialized_messages.append(msg)
+        serialized_messages = self._serialize(messages)
         
         # 5. Build request payload
         request_data = {
@@ -152,13 +144,14 @@ class OpenAIProvider(BaseProvider):
         if max_tokens is not None:
             request_data["max_tokens"] = max_tokens
         if tools is not None:
-            request_data["tools"] = tools
+            request_data["tools"] = self._serialize(tools)
         
-        # Add any additional kwargs
-        request_data.update(kwargs)
+        # Add any additional kwargs (also serialize to handle Pydantic objects)
+        for k, v in kwargs.items():
+            request_data[k] = self._serialize(v)
         
         # 5. Prepare request
-        url = f"{base_url}"
+        url = f"{base_url.rstrip('/')}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"

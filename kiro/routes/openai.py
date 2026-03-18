@@ -446,36 +446,91 @@ async def chat_completions(
 
 
 @router.post("/v1/responses")
+@router.post("/responses")
 async def responses(
     request: Request,
-    request_data: ChatCompletionRequest,
     api_key_id: int = Depends(verify_api_key)
 ):
     """
-    OpenAI /v1/responses endpoint with multi-provider support.
+    OpenAI Responses API proxy endpoint.
     
-    This endpoint is an alias for /v1/chat/completions for compatibility.
-    
-    Supports automatic routing:
-    - GLM models (glm-*) → GLMProvider
-    - Other models (claude-*, auto) → Kiro
-    
-    Args:
-        request: FastAPI Request
-        request_data: Chat completion request
-        api_key_id: Verified API key ID
-    
-    Returns:
-        StreamingResponse for streaming mode
-        JSONResponse for non-streaming mode
+    Accepts the raw OpenAI Responses API format (with 'input' instead of 'messages')
+    and proxies it directly to the OpenAI provider.
     """
-    logger.info(
-        f"Request to /v1/responses (model={request_data.model}, "
-        f"stream={request_data.stream})"
-    )
+    import httpx
     
-    # Forward to chat_completions endpoint
-    return await chat_completions(request, request_data, api_key_id)
+    body = await request.json()
+    model = body.get("model", "")
+    stream = body.get("stream", False)
+    
+    logger.info(f"Request to /responses (model={model}, stream={stream})")
+    
+    auth_manager: AccountManager = request.app.state.auth_manager
+    
+    # Route to provider
+    model_cache: ModelInfoCache = request.app.state.model_cache
+    provider_router = ProviderRouter(auth_manager, model_cache)
+    provider, account = await provider_router.route_request(model)
+    
+    # Extract API key and base_url from account config
+    api_key = account.config.get("api_key")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Account missing 'api_key' in config")
+    base_url = account.config.get("base_url", "https://api.openai.com/v1")
+    
+    url = f"{base_url.rstrip('/')}/responses"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    # Serialize any Pydantic objects in body
+    from kiro.providers.openai_provider import OpenAIProvider
+    serialized_body = OpenAIProvider._serialize(body)
+    
+    # Strip parameters not supported by upstream OpenAI-compatible APIs
+    _unsupported_params = {
+        "prompt_cache_key", "prompt_cache_retention",
+        "safety_identifier",
+    }
+    for param in _unsupported_params:
+        serialized_body.pop(param, None)
+    
+    if stream:
+        async def proxy_stream():
+            try:
+                shared_client = request.app.state.http_client
+                async with shared_client.stream("POST", url, json=serialized_body, headers=headers) as resp:
+                    if resp.status_code != 200:
+                        error_text = await resp.aread()
+                        logger.error(f"Responses API error ({resp.status_code})")
+                        yield f"data: {json.dumps({'error': {'message': error_text.decode('utf-8', errors='ignore'), 'code': resp.status_code}})}\n\n".encode("utf-8")
+                        return
+                    chunk_count = 0
+                    async for chunk in resp.aiter_bytes():
+                        chunk_count += 1
+                        yield chunk
+                    logger.info(f"Responses API stream completed: {chunk_count} chunks")
+            except Exception as e:
+                logger.error(f"Responses API stream error: {e}")
+                yield f"data: {json.dumps({'error': {'message': str(e)}})}\n\n".encode("utf-8")
+            finally:
+                if account:
+                    auth_manager.release_account(account.id)
+        
+        return StreamingResponse(proxy_stream(), media_type="text/event-stream")
+    else:
+        try:
+            shared_client = request.app.state.http_client
+            resp = await shared_client.post(url, json=serialized_body, headers=headers)
+            if account:
+                auth_manager.release_account(account.id)
+            return JSONResponse(content=resp.json(), status_code=resp.status_code)
+        except Exception as e:
+            if account:
+                auth_manager.release_account(account.id)
+            logger.error(f"Responses API error: {e}")
+            raise HTTPException(status_code=502, detail=str(e))
 
 
 # ==================== Anthropic Endpoints ====================
