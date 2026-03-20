@@ -192,6 +192,12 @@ class OpenAIProvider(BaseProvider):
                                 account_manager.mark_rate_limited(account.id)
                                 logger.warning(f"Account {account.id} marked as rate-limited")
                             raise Exception("OpenAI rate limit exceeded. Please try again later.")
+                        elif resp.status_code == 504:
+                            # Gateway timeout - mark account as rate-limited
+                            if account_manager:
+                                account_manager.mark_rate_limited(account.id)
+                                logger.warning(f"Account {account.id} marked as rate-limited due to 504 gateway timeout")
+                            raise Exception("OpenAI gateway timeout. Please try again later.")
                         elif resp.status_code == 401:
                             raise Exception("OpenAI authentication failed. Check your API key.")
                         elif resp.status_code == 400:
@@ -256,6 +262,12 @@ class OpenAIProvider(BaseProvider):
                                     account_manager.mark_rate_limited(account.id)
                                     logger.warning(f"Account {account.id} marked as rate-limited")
                                 raise Exception("OpenAI rate limit exceeded. Please try again later.")
+                            elif resp.status_code == 504:
+                                # Gateway timeout - mark account as rate-limited
+                                if account_manager:
+                                    account_manager.mark_rate_limited(account.id)
+                                    logger.warning(f"Account {account.id} marked as rate-limited due to 504 gateway timeout")
+                                raise Exception("OpenAI gateway timeout. Please try again later.")
                             elif resp.status_code == 401:
                                 raise Exception("OpenAI authentication failed. Check your API key.")
                             elif resp.status_code == 400:

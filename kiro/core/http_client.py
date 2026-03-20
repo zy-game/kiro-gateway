@@ -289,7 +289,36 @@ class KiroHttpClient:
                             detail=f"Account {self.account.id} rate-limited. Retry to use a different account."
                         )
                 
-                # 5xx - server error, wait and retry
+                # 504 - gateway timeout, mark account as rate-limited and fail immediately
+                # No retry needed - let the caller retry with a different account
+                if response.status_code == 504:
+                    logger.warning(f"Received 504 for account {self.account.id}, marking as rate-limited and failing immediately")
+                    self.auth_manager.mark_rate_limited(self.account.id)
+                    
+                    if stream:
+                        error_event = {
+                            "type": "error",
+                            "error": {
+                                "type": "timeout_error",
+                                "message": f"Account {self.account.id} gateway timeout. Retry to use a different account."
+                            }
+                        }
+                        class TimeoutErrorResponse:
+                            status_code = 504
+                            async def aiter_lines(self):
+                                yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+                            async def aread(self):
+                                return json.dumps({"message": f"Account {self.account.id} gateway timeout. Retry to use a different account.", "reason": "GATEWAY_TIMEOUT"}).encode('utf-8')
+                            async def aclose(self):
+                                pass
+                        return TimeoutErrorResponse()
+                    else:
+                        raise HTTPException(
+                            status_code=504,
+                            detail=f"Account {self.account.id} gateway timeout. Retry to use a different account."
+                        )
+                
+                # Other 5xx - server error, wait and retry
                 if 500 <= response.status_code < 600:
                     delay = BASE_RETRY_DELAY * (2 ** attempt)
                     logger.warning(f"Received {response.status_code}, waiting {delay}s (attempt {attempt + 1}/{MAX_RETRIES})")
