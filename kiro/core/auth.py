@@ -474,6 +474,12 @@ class AccountManager:
             # Find first account that hasn't exceeded limit
             for idx, row in enumerate(rows):
                 account = self._row_to_account(dict(row))
+                
+                # Skip banned or suspended accounts
+                if account.status in ("banned", "suspended"):
+                    logger.info(f"Account {account.id} skipped: status={account.status}")
+                    continue
+                
                 threshold = account.limit - 1
                 is_unlimited = account.limit == 0
                 is_available = account.usage < threshold
@@ -923,7 +929,39 @@ class AccountManager:
         region = config.get("region") or DEFAULT_REGION
         profile_arn = config.get("profileArn") or config.get("profile_arn")
 
-        usage_data = await self._request_usage_limits(token, region, profile_arn, account)
+        try:
+            usage_data = await self._request_usage_limits(token, region, profile_arn, account)
+        except Exception as e:
+            # Try to extract status from error response (e.g., 403 with TEMPORARILY_SUSPENDED)
+            error_msg = str(e)
+            if "403" in error_msg or "forbidden" in error_msg.lower():
+                try:
+                    import json as json_module
+                    # Extract JSON from error message like "Kiro usage limits error (403): {...}"
+                    if "{" in error_msg and "}" in error_msg:
+                        json_start = error_msg.index("{")
+                        json_str = error_msg[json_start:]
+                        error_data = json_module.loads(json_str)
+                        reason = error_data.get("reason")
+                        
+                        if reason:
+                            # Map reason to status
+                            status_map = {
+                                "TEMPORARILY_SUSPENDED": "suspended",
+                                "BANNED": "banned",
+                                "ACCOUNT_SUSPENDED": "suspended",
+                            }
+                            status = status_map.get(reason, reason.lower())
+                            
+                            # Store status in database
+                            self._db.update("accounts", {"status": status}, "id = ?", (account.id,))
+                            logger.warning(f"Account {account.id} status updated to '{status}' due to API error: {reason}")
+                except Exception as parse_error:
+                    logger.debug(f"Could not parse error response for status extraction: {parse_error}")
+            
+            # Re-raise the original exception
+            raise
+
         used, limit = self._extract_kiro_points(usage_data)
 
         self.update_usage(account.id, float(used))
