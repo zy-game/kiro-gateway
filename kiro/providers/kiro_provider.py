@@ -314,7 +314,7 @@ class KiroProvider(BaseProvider):
                     logger.debug(f"Original Kiro error: {error_info.original_message} (reason: {error_info.reason})")
                 except (json.JSONDecodeError, KeyError, ImportError):
                     pass
-                
+                self.auth_manager.mark_rate_limited(account.id)
                 logger.warning(f"Kiro API error ({response.status_code}): {error_message[:100]}")
                 
                 # If 402 quota exceeded, refresh account usage to prevent reusing this account
