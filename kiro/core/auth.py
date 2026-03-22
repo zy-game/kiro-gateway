@@ -50,6 +50,7 @@ class Account:
     email: Optional[str] = None
     expires_at: Optional[str] = None
     next_reset_at: Optional[int] = None
+    status: Optional[str] = None
 
 
 @dataclass
@@ -365,6 +366,10 @@ class AccountManager:
                     db.execute("ALTER TABLE accounts ADD COLUMN next_reset_at INTEGER", commit=True)
                     logger.info("Added 'next_reset_at' column to accounts table")
                 
+                if "status" not in columns:
+                    db.execute("ALTER TABLE accounts ADD COLUMN status TEXT", commit=True)
+                    logger.info("Added 'status' column to accounts table")
+                
                 
                 # Add duration_ms field to request_logs table if it doesn't exist
                 cursor = db.execute("PRAGMA table_info(request_logs)", commit=False)
@@ -386,6 +391,7 @@ class AccountManager:
         email = row.get("email")
         expires_at = row.get("expires_at")
         next_reset_at = row.get("next_reset_at")
+        status = row.get("status")
         
         return Account(
             id=row["id"],
@@ -397,6 +403,7 @@ class AccountManager:
             email=email,
             expires_at=expires_at,
             next_reset_at=next_reset_at,
+            status=status,
         )
 
     # ------------------------------------------------------------------
@@ -926,6 +933,7 @@ class AccountManager:
         # Extract and store additional information from API response
         email = usage_data.get("userInfo", {}).get("email")
         next_reset_at = usage_data.get("nextDateReset")
+        status = usage_data.get("status")
         # expiresAt is in config, not in usage API response
         expires_at = config.get("expiresAt")
         
@@ -937,10 +945,16 @@ class AccountManager:
             updates["expires_at"] = expires_at
         if next_reset_at:
             updates["next_reset_at"] = int(next_reset_at)
+        if status:
+            updates["status"] = status
         
         if updates:
             self._db.update("accounts", updates, "id = ?", (account.id,))
-            logger.debug(f"Account {account.id}: updated email={email}, expires_at={expires_at}, next_reset_at={next_reset_at}")
+            logger.debug(f"Account {account.id}: updated email={email}, expires_at={expires_at}, next_reset_at={next_reset_at}, status={status}")
+        
+        # Warn if account is banned
+        if status == "banned":
+            logger.warning(f"Account {account.id} ({email}) is BANNED - this account should not be used for API requests")
 
         logger.info(f"Account {account.id}: usage refreshed — used={used}, limit={limit}")
         return float(used), float(limit)

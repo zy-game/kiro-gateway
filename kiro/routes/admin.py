@@ -23,7 +23,7 @@ import copy
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -71,6 +71,7 @@ def _account_to_dict(account: Any, mask: bool = True, auth_manager: Any = None) 
         "email": getattr(account, "email", None),
         "expires_at": getattr(account, "expires_at", None),
         "next_reset_at": getattr(account, "next_reset_at", None),
+        "status": getattr(account, "status", None),
     }
     if auth_manager and hasattr(auth_manager, '_rate_limit_cooldowns'):
         cooldown_data = auth_manager._rate_limit_cooldowns.get(account.id)
@@ -207,7 +208,7 @@ async def update_account(
 
 
 @router.delete("/accounts/{account_id}", dependencies=[Depends(verify_session)], status_code=204)
-async def delete_account(request: Request, account_id: int) -> JSONResponse:
+async def delete_account(request: Request, account_id: int) -> Response:
     """Delete an account.
 
     Args:
@@ -222,7 +223,7 @@ async def delete_account(request: Request, account_id: int) -> JSONResponse:
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Account {account_id} not found")
     logger.info(f"Admin: deleted account id={account_id}")
-    return JSONResponse(None, status_code=204)
+    return Response(status_code=204)
 
 
 @router.post("/accounts/{account_id}/refresh-usage", dependencies=[Depends(verify_session)])
@@ -314,7 +315,7 @@ async def create_api_key(request: Request, body: ApiKeyCreateRequest) -> JSONRes
 
 
 @router.delete("/api-keys/{key_id}", dependencies=[Depends(verify_session)], status_code=204)
-async def delete_api_key(request: Request, key_id: int) -> JSONResponse:
+async def delete_api_key(request: Request, key_id: int) -> Response:
     """Delete an API key.
 
     Args:
@@ -329,7 +330,7 @@ async def delete_api_key(request: Request, key_id: int) -> JSONResponse:
     except KeyError:
         raise HTTPException(status_code=404, detail=f"API key {key_id} not found")
     logger.info(f"Admin: deleted API key id={key_id}")
-    return JSONResponse(None, status_code=204)
+    return Response(status_code=204)
 
 
 
@@ -367,7 +368,7 @@ async def create_admin_user(request: Request, body: AdminUserCreateRequest) -> J
 
 
 @router.delete("/users/{user_id}", dependencies=[Depends(verify_session)], status_code=204)
-async def delete_admin_user(request: Request, user_id: int) -> JSONResponse:
+async def delete_admin_user(request: Request, user_id: int) -> Response:
     """Delete an admin user."""
     manager = request.app.state.auth_manager
     try:
@@ -375,7 +376,7 @@ async def delete_admin_user(request: Request, user_id: int) -> JSONResponse:
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Admin user {user_id} not found")
     logger.info(f"Admin: deleted user id={user_id}")
-    return JSONResponse(None, status_code=204)
+    return Response(status_code=204)
 
 
 # ==================== Request Logs & Statistics ====================
@@ -566,7 +567,7 @@ async def update_model(
 
 
 @router.delete("/models/{model_id}", dependencies=[Depends(verify_session)], status_code=204)
-async def delete_model(request: Request, model_id: int) -> JSONResponse:
+async def delete_model(request: Request, model_id: int) -> Response:
     """Delete a model.
     
     Args:
@@ -579,7 +580,7 @@ async def delete_model(request: Request, model_id: int) -> JSONResponse:
     try:
         manager.delete_model(model_id)
         logger.info(f"Admin: deleted model id={model_id}")
-        return JSONResponse(None, status_code=204)
+        return Response(status_code=204)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
