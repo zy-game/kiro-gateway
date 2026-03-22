@@ -262,7 +262,7 @@ class KiroHttpClient:
                 
                 # 429 - rate limit, immediately mark account and fail
                 # The caller (Kiro IDE) will retry the request, which will be routed to a different account
-                if response.status_code == 429:
+                if response.status_code == 429 or response.status_code == 504:
                     logger.warning(f"Received 429 for account {self.account.id}, marking as rate-limited and failing immediately")
                     self.auth_manager.mark_rate_limited(self.account.id)
                     
