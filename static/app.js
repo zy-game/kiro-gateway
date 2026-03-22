@@ -267,6 +267,14 @@ async function loadAccounts() {
                             <div class="data-field-label">优先级</div>
                             <div class="data-field-value">${account.priority}</div>
                         </div>
+                        ${account.status ? `
+                        <div class="data-field">
+                            <div class="data-field-label">账号状态</div>
+                            <div class="data-field-value" style="color: ${account.status === 'banned' ? '#e74c3c' : account.status === 'suspended' ? '#f39c12' : '#3fb950'}; font-weight: 600;">
+                                ${account.status === 'banned' ? '🚫 已封禁' : account.status === 'suspended' ? '⏸️ 已暂停' : account.status}
+                            </div>
+                        </div>
+                        ` : ''}
                         ${account.email ? `
                         <div class="data-field">
                             <div class="data-field-label">邮箱</div>
@@ -459,8 +467,20 @@ function renderAccountsTable(accounts, container) {
                 ${accounts.map(account => {
                     const usagePercent = account.limit > 0 ? (account.usage / account.limit * 100) : 0;
                     const usageText = account.limit > 0 ? `${account.usage.toFixed(2)} / ${account.limit}` : `${account.usage.toFixed(2)}`;
-                    const statusText = account.cooldown && account.cooldown.active ? '冷却中' : '正常';
-                    const statusColor = account.cooldown && account.cooldown.active ? '#e74c3c' : '#3fb950';
+                    
+                    // Status priority: banned > suspended > cooldown > normal
+                    let statusText = '正常';
+                    let statusColor = '#3fb950';
+                    if (account.status === 'banned') {
+                        statusText = '🚫 已封禁';
+                        statusColor = '#e74c3c';
+                    } else if (account.status === 'suspended') {
+                        statusText = '⏸️ 已暂停';
+                        statusColor = '#f39c12';
+                    } else if (account.cooldown && account.cooldown.active) {
+                        statusText = '❄️ 冷却中';
+                        statusColor = '#e74c3c';
+                    }
                     
                     return `
                         <tr>
